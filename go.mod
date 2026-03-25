@@ -3,7 +3,9 @@ module github.com/HT4w5/flux
 go 1.25.8
 
 require (
+	github.com/allegro/bigcache v1.2.1
 	github.com/bytedance/sonic v1.15.0
+	github.com/gaissmai/bart v0.26.1
 	github.com/valyala/bytebufferpool v1.0.0
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 )
@@ -15,5 +17,5 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	golang.org/x/arch v0.0.0-20210923205945-b76863e36670 // indirect
-	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/sys v0.35.0 // indirect
 )
