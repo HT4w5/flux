@@ -4,6 +4,7 @@ go 1.25.8
 
 require (
 	github.com/bytedance/sonic v1.15.0
+	github.com/valyala/bytebufferpool v1.0.0
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 )
 
