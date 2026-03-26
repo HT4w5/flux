@@ -9,6 +9,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/VictoriaMetrics/fastcache"
 )
 
@@ -20,10 +21,10 @@ const (
 )
 
 type FileSizeIndex struct {
-	cache    *fastcache.Cache
-	logger   *slog.Logger
-	routeMap map[string]string
-	buffer   []byte
+	cache          *fastcache.Cache
+	logger         *slog.Logger
+	routeMap       map[string]string
+	pathBufferPool *pool.BytePool
 
 	// Config
 	ttl      time.Duration
@@ -55,10 +56,10 @@ func WithRoute(tag, root string) func(*FileSizeIndex) {
 
 func New(opts ...func(*FileSizeIndex)) (*FileSizeIndex, error) {
 	i := &FileSizeIndex{
-		ttl:      6 * time.Hour,
-		maxBytes: 1024,
-		routeMap: make(map[string]string),
-		buffer:   make([]byte, 0),
+		ttl:            6 * time.Hour,
+		maxBytes:       1024,
+		routeMap:       make(map[string]string),
+		pathBufferPool: pool.NewBytePool(128),
 	}
 
 	for _, opt := range opts {
@@ -95,11 +96,14 @@ func (i *FileSizeIndex) GetSize(path []byte) (int64, bool) {
 		return 0, false
 	}
 
-	i.buffer = i.buffer[:0]
-	i.buffer = append(i.buffer, root...)
-	i.buffer = append(i.buffer, trimmed[slashIdx:]...)
+	buffer := i.pathBufferPool.Get()
+	defer i.pathBufferPool.Put(buffer)
 
-	size := i.queryFilesystem(i.buffer)
+	buffer = buffer[:0]
+	buffer = append(buffer, root...)
+	buffer = append(buffer, trimmed[slashIdx:]...)
+
+	size := i.queryFilesystem(buffer)
 
 	// Update cache
 	if size != InternalError {
