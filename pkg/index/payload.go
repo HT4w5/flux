@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+type payloadBuf [16]byte
+
 type cachePayload struct {
 	size      int64
 	expiresAt time.Time

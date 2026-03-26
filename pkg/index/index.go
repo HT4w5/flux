@@ -1,14 +1,15 @@
 package index
 
 import (
+	"bytes"
 	"errors"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
+	"unsafe"
 
-	"github.com/allegro/bigcache"
+	"github.com/VictoriaMetrics/fastcache"
 )
 
 const (
@@ -19,13 +20,14 @@ const (
 )
 
 type FileSizeIndex struct {
-	cache    *bigcache.BigCache
+	cache    *fastcache.Cache
 	logger   *slog.Logger
 	routeMap map[string]string
+	buffer   []byte
 
 	// Config
-	ttl          time.Duration
-	maxCacheSize int
+	ttl      time.Duration
+	maxBytes int
 }
 
 // WithTTL sets the time-to-live for cache entries.
@@ -35,15 +37,17 @@ func WithTTL(ttl time.Duration) func(*FileSizeIndex) {
 	}
 }
 
-// WithMaxCacheSize sets the maximum cache size in MB.
-func WithMaxCacheSize(size int) func(*FileSizeIndex) {
+// WithmaxBytes sets the maximum cache size in MB.
+func WithmaxBytes(size int) func(*FileSizeIndex) {
 	return func(i *FileSizeIndex) {
-		i.maxCacheSize = size
+		i.maxBytes = size
 	}
 }
 
 // WithRoute adds a single route mapping for file paths.
+// E.g., "alpine" -> "/data/alpine".
 func WithRoute(tag, root string) func(*FileSizeIndex) {
+	root = strings.TrimSuffix(root, "/")
 	return func(i *FileSizeIndex) {
 		i.routeMap[tag] = root
 	}
@@ -51,36 +55,31 @@ func WithRoute(tag, root string) func(*FileSizeIndex) {
 
 func New(opts ...func(*FileSizeIndex)) (*FileSizeIndex, error) {
 	i := &FileSizeIndex{
-		ttl:          6 * time.Hour,
-		maxCacheSize: 1024,
-		routeMap:     make(map[string]string),
+		ttl:      6 * time.Hour,
+		maxBytes: 1024,
+		routeMap: make(map[string]string),
+		buffer:   make([]byte, 0),
 	}
 
 	for _, opt := range opts {
 		opt(i)
 	}
 
-	var err error
-	i.cache, err = bigcache.NewBigCache(bigcache.Config{
-		Shards:             1024,
-		LifeWindow:         i.ttl,
-		CleanWindow:        5 * time.Minute,
-		MaxEntriesInWindow: 1000 * 10 * 60,
-		MaxEntrySize:       500,
-		Verbose:            false,
-		HardMaxCacheSize:   i.maxCacheSize,
-	})
-	if err != nil {
-		return nil, err
-	}
+	i.cache = fastcache.New(i.maxBytes)
 
 	return i, nil
 }
 
-func (i *FileSizeIndex) GetSize(path string) (int64, bool) {
-	cleanPath := strings.TrimPrefix(path, "/")
-	first, rest, found := strings.Cut(cleanPath, "/")
-	if !found {
+func (i *FileSizeIndex) GetSize(path []byte) (int64, bool) {
+	var trimmed []byte
+	if path[0] == '/' {
+		trimmed = path[1:]
+	} else {
+		trimmed = path
+	}
+
+	slashIdx := bytes.IndexByte(trimmed, '/')
+	if slashIdx < 0 {
 		return NoRoute, false
 	}
 
@@ -89,29 +88,33 @@ func (i *FileSizeIndex) GetSize(path string) (int64, bool) {
 		return size, size >= 0
 	}
 
+	first := unsafe.String(unsafe.SliceData(trimmed[:slashIdx]), slashIdx)
+
 	root, ok := i.routeMap[first]
 	if !ok {
 		return 0, false
 	}
 
-	size := i.queryFilesystem(filepath.Join(root, rest))
+	i.buffer = i.buffer[:0]
+	i.buffer = append(i.buffer, root...)
+	i.buffer = append(i.buffer, trimmed[slashIdx:]...)
+
+	size := i.queryFilesystem(i.buffer)
 
 	// Update cache
-	if err := i.updateCache(path, size); err != nil {
-		i.logger.Error("failed to update cache", "error", err, "path", path)
+	if size != InternalError {
+		i.updateCache(path, size)
 	}
 
 	return size, size >= 0
 }
 
-func (i *FileSizeIndex) queryCache(path string) (int64, bool) {
-	b, err := i.cache.Get(path)
-	if err != nil {
-		return 0, false
-	}
+func (i *FileSizeIndex) queryCache(path []byte) (int64, bool) {
+	var buf payloadBuf
+	i.cache.Get(buf[:], path)
 
 	var p cachePayload
-	p.read(b)
+	p.read(buf[:])
 	if p.expiresAt.Before(time.Now()) {
 		return 0, false
 	}
@@ -119,18 +122,19 @@ func (i *FileSizeIndex) queryCache(path string) (int64, bool) {
 	return p.size, true
 }
 
-func (i *FileSizeIndex) updateCache(path string, size int64) error {
+func (i *FileSizeIndex) updateCache(path []byte, size int64) {
 	b := cachePayload{
 		size:      size,
 		expiresAt: time.Now().Add(i.ttl),
 	}
 	var buf [16]byte
 	b.write(buf[:])
-	return i.cache.Set(path, buf[:])
+	i.cache.Set(path, buf[:])
 }
 
-func (i *FileSizeIndex) queryFilesystem(path string) int64 {
-	info, err := os.Stat(path)
+func (i *FileSizeIndex) queryFilesystem(path []byte) int64 {
+	pathStr := unsafe.String(unsafe.SliceData(path), len(path))
+	info, err := os.Stat(pathStr)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return NonExistent
