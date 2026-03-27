@@ -54,7 +54,7 @@ func WithRoute(tag, root string) func(*FileSizeIndex) {
 	}
 }
 
-func New(opts ...func(*FileSizeIndex)) (*FileSizeIndex, error) {
+func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 	i := &FileSizeIndex{
 		ttl:            6 * time.Hour,
 		maxBytes:       1024,
@@ -68,7 +68,7 @@ func New(opts ...func(*FileSizeIndex)) (*FileSizeIndex, error) {
 
 	i.cache = fastcache.New(i.maxBytes)
 
-	return i, nil
+	return i
 }
 
 func (i *FileSizeIndex) GetSize(path []byte) (int64, bool) {
