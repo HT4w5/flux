@@ -5,8 +5,8 @@ go 1.25.8
 require (
 	github.com/VictoriaMetrics/fastcache v1.13.3
 	github.com/bytedance/sonic v1.15.0
-	github.com/gaissmai/bart v0.26.1
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/valyala/bytebufferpool v1.0.0
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 )
