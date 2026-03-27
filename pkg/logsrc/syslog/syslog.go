@@ -93,6 +93,12 @@ func New(opts ...func(*SyslogSource)) *SyslogSource {
 }
 
 func (s *SyslogSource) Start(ctx context.Context, output chan<- dto.Request) {
+	go func() {
+		s.run(ctx, output)
+	}()
+}
+
+func (s *SyslogSource) run(ctx context.Context, output chan<- dto.Request) {
 	// Start syslog server
 	var err error
 	switch s.network {
