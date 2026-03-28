@@ -74,7 +74,7 @@ type SyslogSource struct {
 func New(opts ...func(*SyslogSource)) *SyslogSource {
 	s := &SyslogSource{
 		logPartsChan: make(syslog.LogPartsChannel),
-		logger:       slog.Default(),
+		logger:       slog.New(slog.DiscardHandler),
 		parser:       &nginx.NginxJSONParser{},
 		network:      UDP,
 		addr:         "0.0.0.0:514",

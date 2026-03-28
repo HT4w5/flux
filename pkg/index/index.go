@@ -60,6 +60,7 @@ func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 		maxBytes:       1024,
 		routeMap:       make(map[string]string),
 		pathBufferPool: pool.NewBytePool(128),
+		logger:         slog.New(slog.DiscardHandler),
 	}
 
 	for _, opt := range opts {
