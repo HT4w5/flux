@@ -3,7 +3,6 @@ package analyzer
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/HT4w5/flux/pkg/dto"
@@ -96,13 +95,9 @@ func (a *Analyzer) Start(ctx context.Context) {
 	a.src.Start(ctx, a.requestChan)
 
 	// Start workers
-	var wg sync.WaitGroup
 	for i := range a.config.NumWorkers {
-		wg.Go(func() {
-			a.worker(i, ctx)
-		})
+		go a.worker(i, ctx)
 	}
-	wg.Wait()
 }
 
 func (a *Analyzer) worker(id int, ctx context.Context) {

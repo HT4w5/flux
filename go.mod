@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/samber/slog-gin v1.21.0
-	github.com/valyala/bytebufferpool v1.0.0
+	github.com/spf13/pflag v1.0.10
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba
 	gopkg.in/mcuadros/go-syslog.v2 v2.3.0
 )
