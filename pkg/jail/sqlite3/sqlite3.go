@@ -157,12 +157,12 @@ FailureClose:
 	return err
 }
 
-func (j *Sqlite3Jail) Close() {
+func (j *Sqlite3Jail) Close() error {
 	j.logger.Info("closing")
 	j.shutdownMu.Lock()
 	defer j.shutdownMu.Unlock()
 	if j.isShutdown {
-		return
+		return nil
 	}
 	j.isShutdown = true
 
@@ -194,6 +194,7 @@ func (j *Sqlite3Jail) Close() {
 	if err != nil {
 		j.logger.Warn("failed to close db", "error", err)
 	}
+	return err
 }
 
 func (j *Sqlite3Jail) Add(ctx context.Context, b *dto.BanRecord) error {
