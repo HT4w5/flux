@@ -21,8 +21,11 @@ const (
 )
 
 type FileSizeIndex struct {
+	// External
+	logger *slog.Logger
+
+	// Internal
 	cache          *fastcache.Cache
-	logger         *slog.Logger
 	routeMap       map[string]string
 	pathBufferPool *pool.BytePool
 
@@ -51,6 +54,12 @@ func WithRoute(tag, root string) func(*FileSizeIndex) {
 	root = strings.TrimSuffix(root, "/")
 	return func(i *FileSizeIndex) {
 		i.routeMap[tag] = root
+	}
+}
+
+func WithLogger(logger *slog.Logger) func(*FileSizeIndex) {
+	return func(i *FileSizeIndex) {
+		i.logger = logger
 	}
 }
 
@@ -153,4 +162,10 @@ func (i *FileSizeIndex) queryFilesystem(path []byte) int64 {
 	}
 
 	return info.Size()
+}
+
+func (i *FileSizeIndex) GetStats() fastcache.Stats {
+	var s fastcache.Stats
+	i.cache.UpdateStats(&s)
+	return s
 }
