@@ -77,7 +77,7 @@ func New(opts ...func(*SyslogSource)) *SyslogSource {
 		logger:       slog.New(slog.DiscardHandler),
 		parser:       &nginx.NginxJSONParser{},
 		network:      UDP,
-		addr:         "0.0.0.0:514",
+		addr:         "0.0.0.0:1514",
 	}
 
 	for _, opt := range opts {

@@ -11,6 +11,7 @@ import (
 	"github.com/HT4w5/flux/pkg/logsrc"
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/VictoriaMetrics/fastcache"
+	"github.com/docker/go-units"
 )
 
 // Analyzer config
@@ -36,7 +37,7 @@ type Config struct {
 
 	// Performance settings
 	NumWorkers int
-	MaxBytes   int
+	MaxBytes   int64
 }
 
 type Analyzer struct {
@@ -64,8 +65,8 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 			RequestLeak:          10,
 			RequestVolume:        50,
 			RequestBanDuration:   24 * time.Hour,
-			ByteLeak:             40 * 1024 * 1024,
-			ByteVolume:           20 * 1024 * 1024 * 1024,
+			ByteLeak:             40 * units.MB,
+			ByteVolume:           20 * units.GB,
 			ByteBanDuration:      24 * time.Hour,
 			FileRatioLeak:        5,   // 5/1e5 files per second
 			FileRatioVolume:      5e5, // 5 files
@@ -73,7 +74,7 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 			IPv4BanPrefixLen:     24,
 			IPv6BanPrefixLen:     48,
 			NumWorkers:           8,
-			MaxBytes:             2 * 1024 * 1024 * 1024,
+			MaxBytes:             2 * units.GB,
 		},
 		// Other stuff
 		keyBufferPool: pool.NewBytePool(128),
@@ -84,7 +85,7 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 		opt(a)
 	}
 
-	a.bucketCache = fastcache.New(a.config.MaxBytes)
+	a.bucketCache = fastcache.New(int(a.config.MaxBytes))
 	a.requestChan = make(chan dto.Request)
 
 	return a

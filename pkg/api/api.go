@@ -37,8 +37,9 @@ type APIServer struct {
 
 func New(opts ...func(*APIServer)) *APIServer {
 	s := &APIServer{
-		logger: slog.New(slog.DiscardHandler),
-		router: gin.New(),
+		logger:     slog.New(slog.DiscardHandler),
+		router:     gin.New(),
+		listenAddr: ":80",
 	}
 
 	for _, opt := range opts {

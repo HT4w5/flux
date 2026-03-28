@@ -11,6 +11,7 @@ import (
 
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/VictoriaMetrics/fastcache"
+	"github.com/docker/go-units"
 )
 
 const (
@@ -31,7 +32,7 @@ type FileSizeIndex struct {
 
 	// Config
 	ttl      time.Duration
-	maxBytes int
+	maxBytes int64
 }
 
 // WithTTL sets the time-to-live for cache entries.
@@ -42,7 +43,7 @@ func WithTTL(ttl time.Duration) func(*FileSizeIndex) {
 }
 
 // WithmaxBytes sets the maximum cache size in MB.
-func WithmaxBytes(size int) func(*FileSizeIndex) {
+func WithmaxBytes(size int64) func(*FileSizeIndex) {
 	return func(i *FileSizeIndex) {
 		i.maxBytes = size
 	}
@@ -66,7 +67,7 @@ func WithLogger(logger *slog.Logger) func(*FileSizeIndex) {
 func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 	i := &FileSizeIndex{
 		ttl:            6 * time.Hour,
-		maxBytes:       1024,
+		maxBytes:       units.GB,
 		routeMap:       make(map[string]string),
 		pathBufferPool: pool.NewBytePool(128),
 		logger:         slog.New(slog.DiscardHandler),
@@ -76,7 +77,7 @@ func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 		opt(i)
 	}
 
-	i.cache = fastcache.New(i.maxBytes)
+	i.cache = fastcache.New(int(i.maxBytes))
 
 	return i
 }

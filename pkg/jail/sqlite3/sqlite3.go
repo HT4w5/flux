@@ -33,8 +33,8 @@ var (
 	ErrShutdown = errors.New("jail shutdown")
 )
 
-// Sqlite3Jail implements Jail with sqlite3 database
-type Sqlite3Jail struct {
+// SQLite3Jail implements Jail with sqlite3 database
+type SQLite3Jail struct {
 	// External
 	logger *slog.Logger
 
@@ -57,8 +57,8 @@ type Sqlite3Jail struct {
 	banDstPorts    []uint16 // TODO?: add this to dto.BanRecord and decide on analyzer layer
 }
 
-func New(opts ...func(*Sqlite3Jail)) *Sqlite3Jail {
-	j := &Sqlite3Jail{
+func New(opts ...func(*SQLite3Jail)) *SQLite3Jail {
+	j := &SQLite3Jail{
 		pruneInterval:  time.Hour,
 		dataSourceName: "jail.db",
 		logger:         slog.New(slog.DiscardHandler),
@@ -76,36 +76,36 @@ func New(opts ...func(*Sqlite3Jail)) *Sqlite3Jail {
 	return j
 }
 
-// WithLogger sets the logger for the Sqlite3Jail.
-func WithLogger(logger *slog.Logger) func(*Sqlite3Jail) {
-	return func(j *Sqlite3Jail) {
+// WithLogger sets the logger for the SQLite3Jail.
+func WithLogger(logger *slog.Logger) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
 		j.logger = logger
 	}
 }
 
 // WithDataSourceName sets the data source name for the SQLite database.
-func WithDataSourceName(dataSourceName string) func(*Sqlite3Jail) {
-	return func(j *Sqlite3Jail) {
+func WithDataSourceName(dataSourceName string) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
 		j.dataSourceName = dataSourceName
 	}
 }
 
 // WithPruneInterval sets the prune interval for cleaning up expired records.
 // The interval will be clamped to minPruneInterval if a smaller value is provided.
-func WithPruneInterval(interval time.Duration) func(*Sqlite3Jail) {
-	return func(j *Sqlite3Jail) {
+func WithPruneInterval(interval time.Duration) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
 		j.pruneInterval = interval
 	}
 }
 
 // WithBanDstPorts sets the destination ports to ban.
-func WithBanDstPorts(ports []uint16) func(*Sqlite3Jail) {
-	return func(j *Sqlite3Jail) {
+func WithBanDstPorts(ports []uint16) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
 		j.banDstPorts = ports
 	}
 }
 
-func (j *Sqlite3Jail) Init(ctx context.Context) error {
+func (j *SQLite3Jail) Init(ctx context.Context) error {
 	j.logger.Info("starting sqlite3 jail")
 	var err error
 	j.db, err = sql.Open("sqlite3", j.dataSourceName+"?_journal_mode=WAL&_busy_timeout=5000&parseTime=true")
@@ -157,7 +157,7 @@ FailureClose:
 	return err
 }
 
-func (j *Sqlite3Jail) Close() error {
+func (j *SQLite3Jail) Close() error {
 	j.logger.Info("closing")
 	j.shutdownMu.Lock()
 	defer j.shutdownMu.Unlock()
@@ -197,7 +197,7 @@ func (j *Sqlite3Jail) Close() error {
 	return err
 }
 
-func (j *Sqlite3Jail) Add(ctx context.Context, b *dto.BanRecord) error {
+func (j *SQLite3Jail) Add(ctx context.Context, b *dto.BanRecord) error {
 	j.shutdownMu.RLock()
 	defer j.shutdownMu.RUnlock()
 	if j.isShutdown {
@@ -207,7 +207,7 @@ func (j *Sqlite3Jail) Add(ctx context.Context, b *dto.BanRecord) error {
 	return err
 }
 
-func (j *Sqlite3Jail) Del(ctx context.Context, id int64) error {
+func (j *SQLite3Jail) Del(ctx context.Context, id int64) error {
 	j.shutdownMu.RLock()
 	defer j.shutdownMu.RUnlock()
 	if j.isShutdown {
@@ -217,7 +217,7 @@ func (j *Sqlite3Jail) Del(ctx context.Context, id int64) error {
 	return err
 }
 
-func (j *Sqlite3Jail) List(ctx context.Context) ([]dto.BanRecord, error) {
+func (j *SQLite3Jail) List(ctx context.Context) ([]dto.BanRecord, error) {
 	j.shutdownMu.RLock()
 	defer j.shutdownMu.RUnlock()
 	if j.isShutdown {
@@ -249,7 +249,7 @@ func (j *Sqlite3Jail) List(ctx context.Context) ([]dto.BanRecord, error) {
 	return bans, nil
 }
 
-func (j *Sqlite3Jail) Compile(ctx context.Context) ([]dto.BanRule, error) {
+func (j *SQLite3Jail) Compile(ctx context.Context) ([]dto.BanRule, error) {
 	j.shutdownMu.RLock()
 	defer j.shutdownMu.RUnlock()
 	if j.isShutdown {
@@ -292,7 +292,7 @@ func (j *Sqlite3Jail) Compile(ctx context.Context) ([]dto.BanRule, error) {
 }
 
 // Cleanup removes all expired records from the database
-func (j *Sqlite3Jail) worker(ctx context.Context) {
+func (j *SQLite3Jail) worker(ctx context.Context) {
 	ticker := time.NewTicker(j.pruneInterval)
 	defer ticker.Stop()
 
