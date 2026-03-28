@@ -2,7 +2,6 @@ package nginx
 
 import (
 	"bytes"
-	"encoding/json"
 	"strconv"
 	"time"
 	"unsafe"
@@ -14,7 +13,10 @@ import (
 )
 
 const (
-	nsPerS = 1e9
+	nsPerS       = 1e9
+	urlLRUSize   = 256
+	hostLRUSize  = 16
+	agentLRUSize = 64
 )
 
 type nginxJSONLogEntry struct {
@@ -31,11 +33,27 @@ type nginxJSONLogEntry struct {
 }
 
 type NginxJSONParser struct {
-	decoder   json.Decoder
-	methodLRU *lru.TwoQueueCache[string, string]
-	urlLRU    *lru.TwoQueueCache[string, string]
-	hostLRU   *lru.TwoQueueCache[string, string]
-	agentLRU  *lru.TwoQueueCache[string, string]
+	urlLRU   *lru.TwoQueueCache[string, string]
+	hostLRU  *lru.TwoQueueCache[string, string]
+	agentLRU *lru.TwoQueueCache[string, string]
+}
+
+func New() (*NginxJSONParser, error) {
+	p := &NginxJSONParser{}
+	var err error
+	p.urlLRU, err = lru.New2Q[string, string](urlLRUSize)
+	if err != nil {
+		return nil, err
+	}
+	p.hostLRU, err = lru.New2Q[string, string](hostLRUSize)
+	if err != nil {
+		return nil, err
+	}
+	p.agentLRU, err = lru.New2Q[string, string](agentLRUSize)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
 }
 
 func (p *NginxJSONParser) Parse(line []byte) (dto.Request, error) {
