@@ -116,6 +116,7 @@ func Default() *Config {
 		},
 		LogSource: LogSourceConfig{
 			Method: "syslog",
+			Parser: "nginx",
 			Syslog: SyslogSourceConfig{
 				Network: "udp",
 				Addr:    "0.0.0.0:1514",
