@@ -34,8 +34,21 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	bkt.ByteCount += request.Sent
 	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		bkt.RequestCount -= int32(a.config.RequestLeak) * int32(timeDelta)
-		bkt.ByteCount -= a.config.ByteLeak * timeDelta
+		requestLeaked := a.config.RequestLeak * int(timeDelta)
+		if requestLeaked >= int(bkt.RequestCount) {
+			bkt.RequestCount = 0
+		} else {
+			bkt.RequestCount -= int32(requestLeaked)
+		}
+
+		bkt.ByteCount = max(0, bkt.ByteCount-a.config.ByteLeak*timeDelta)
+		byteLeaked := a.config.ByteLeak * timeDelta
+		if byteLeaked >= bkt.ByteCount {
+			bkt.ByteCount = 0
+		} else {
+			bkt.ByteCount -= byteLeaked
+		}
+
 		bkt.LastUpdate = request.Time
 	}
 
@@ -77,7 +90,6 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	}
 
 	bkt.write(buf[:])
-
 	a.bucketCache.Set(key[:], buf[:])
 }
 
@@ -112,7 +124,13 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 
 	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		bkt.FileRatio -= a.config.FileRatioLeak * timeDelta
+		fileRatioLeaked := a.config.FileRatioLeak * timeDelta
+		if fileRatioLeaked >= bkt.FileRatio {
+			bkt.FileRatio = 0
+		} else {
+			bkt.FileRatio -= fileRatioLeaked
+		}
+
 		bkt.LastUpdate = request.Time
 	}
 
@@ -156,32 +174,42 @@ func (a *Analyzer) DumpCache() CacheDump {
 
 	for it.SetNext() {
 		var addr netip.Addr
-		val, err := it.Value()
+		var path string
+		ent, err := it.Value()
 		if err != nil {
 			a.logger.Warn("error iterating thourgh bucket cache", "error", err)
 			continue
 		}
-		key := val.Key()
+		key := ent.Key()
 		if len(key) < 16 {
 			a.logger.Warn("corrupt key encountered when dumping", "key", key)
 			continue
 		}
 		addr = netip.AddrFrom16([16]byte(key[:16])).Unmap()
 		if len(key) > 16 {
-			var p clientPathPayload
-			p.read(val.Value())
-			d.ClientPathBuckets = append(d.ClientPathBuckets, ClientPathBucket{
-				Addr:              addr,
-				Path:              string(key[17:]),
-				clientPathPayload: p,
-			})
-		} else {
+			path = string(key[17:])
+		}
+
+		val := ent.Value()
+
+		switch len(val) {
+		case 20:
 			var p clientPayload
-			p.read(val.Value())
+			p.read(val)
 			d.ClientBuckets = append(d.ClientBuckets, ClientBucket{
 				Addr:          addr,
 				clientPayload: p,
 			})
+		case 16:
+			var p clientPathPayload
+			p.read(val)
+			d.ClientPathBuckets = append(d.ClientPathBuckets, ClientPathBucket{
+				Addr:              addr,
+				Path:              path,
+				clientPathPayload: p,
+			})
+		default:
+			a.logger.Warn("invalid payload length", "length", len(val))
 		}
 	}
 
