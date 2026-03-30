@@ -112,6 +112,8 @@ func (s *SyslogSource) run(ctx context.Context, output chan<- dto.Request) {
 		err = ErrUnknownNetwork
 	}
 
+	err = errors.Join(err, s.srv.Boot())
+
 	if err != nil {
 		s.logger.Error("failed to start syslog server", "error", err, "network", s.network.Name(), "addr", s.addr)
 		return
