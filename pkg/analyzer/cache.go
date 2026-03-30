@@ -97,10 +97,6 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	a.bucketCache.Set(key[:], buf[:])
 }
 
-const (
-	fileRatioPrecision = 1e5
-)
-
 // For file ratio bucket
 func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Request) {
 	// Query file size index
@@ -127,13 +123,13 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 
 	// Calculate ratio increment
 	// Scale up for 2 decimals of precision
-	bkt.FileRatio += (request.Sent * fileRatioPrecision) / (size * fileRatioPrecision)
+	bkt.FileRatio += float64(request.Sent) / float64(size)
 
 	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		fileRatioLeaked := a.config.FileRatioLeak * timeDelta
+		fileRatioLeaked := a.config.FileRatioLeak * float64(timeDelta)
 		if fileRatioLeaked >= bkt.FileRatio {
-			bkt.FileRatio = 0
+			bkt.FileRatio = 0.
 		} else {
 			bkt.FileRatio -= fileRatioLeaked
 		}

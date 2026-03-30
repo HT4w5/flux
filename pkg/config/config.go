@@ -58,8 +58,8 @@ type AnalyzerConfig struct {
 	ByteLeak               int64         `mapstructure:"byte_leak"`
 	ByteVolume             int64         `mapstructure:"byte_volume"`
 	ByteBanDuration        time.Duration `mapstructure:"byte_ban_duration"`
-	FileRatioLeak          int64         `mapstructure:"file_ratio_leak"`
-	FileRatioVolume        int64         `mapstructure:"file_ratio_volume"`
+	FileRatioLeak          float64       `mapstructure:"file_ratio_leak"`
+	FileRatioVolume        float64       `mapstructure:"file_ratio_volume"`
 	FileRatioBanDuration   time.Duration `mapstructure:"file_ratio_ban_duration"`
 	IPv4BanPrefixLen       int           `mapstructure:"ipv4_ban_prefix_length"`
 	IPv6BanPrefixLen       int           `mapstructure:"ipv6_ban_prefix_length"`

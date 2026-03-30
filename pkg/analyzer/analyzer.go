@@ -35,8 +35,8 @@ type Config struct {
 	ByteBanDuration time.Duration
 
 	// File ratio rate limiting
-	FileRatioLeak        int64
-	FileRatioVolume      int64
+	FileRatioLeak        float64
+	FileRatioVolume      float64
 	FileRatioBanDuration time.Duration
 
 	// IP ban prefix lengths
