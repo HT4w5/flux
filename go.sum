@@ -1,7 +1,7 @@
+github.com/HT4w5/fastcache v1.13.3-itr h1:42Gxi8P+Vq2OJlr2uctBGzXnvsPYjXDpfZccYFxfSOw=
+github.com/HT4w5/fastcache v1.13.3-itr/go.mod h1:kCbW6Og+3Iv2/Ox96IIpFMF3bxfWszTMSQlznWdttds=
 github.com/SladkyCitron/slogcolor v1.8.0 h1:ln4mUPfVhs7a/vZfjnKkz5YZ71Bg/KFWneS2hfFq6FM=
 github.com/SladkyCitron/slogcolor v1.8.0/go.mod h1:ft8LEVIl4isUkebakhv+ngNXJjWBumnwhXfxTLApf3M=
-github.com/VictoriaMetrics/fastcache v1.13.3 h1:rBabE0iIxcqKEMCwUmwHZ9dgEqXerg8FRbRDUvC7OVc=
-github.com/VictoriaMetrics/fastcache v1.13.3/go.mod h1:hHXhl4DA2fTL2HTZDJFXWgW0LNjo6B+4aj2Wmng3TjU=
 github.com/allegro/bigcache v1.2.1 h1:hg1sY1raCwic3Vnsvje6TT7/pnZba83LeFck5NrFKSc=
 github.com/allegro/bigcache v1.2.1/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
 github.com/bytedance/gopkg v0.1.3 h1:TPBSwH8RsouGCBcMBktLt1AymVo2TVsBVCY4b6TnZ/M=

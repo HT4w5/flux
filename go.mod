@@ -3,8 +3,8 @@ module github.com/HT4w5/flux
 go 1.25.8
 
 require (
+	github.com/HT4w5/fastcache v1.13.3-itr
 	github.com/SladkyCitron/slogcolor v1.8.0
-	github.com/VictoriaMetrics/fastcache v1.13.3
 	github.com/bytedance/sonic v1.15.0
 	github.com/docker/go-units v0.5.0
 	github.com/gin-gonic/gin v1.12.0

@@ -9,8 +9,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/HT4w5/fastcache"
 	"github.com/HT4w5/flux/pkg/pool"
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/docker/go-units"
 )
 
@@ -130,17 +130,17 @@ func (i *FileSizeIndex) queryCache(path []byte) (int64, bool) {
 
 	var p cachePayload
 	p.read(buf[:])
-	if p.expiresAt.Before(time.Now()) {
+	if p.ExpiresAt.Before(time.Now()) {
 		return 0, false
 	}
 
-	return p.size, true
+	return p.Size, true
 }
 
 func (i *FileSizeIndex) updateCache(path []byte, size int64) {
 	b := cachePayload{
-		size:      size,
-		expiresAt: time.Now().Add(i.ttl),
+		Size:      size,
+		ExpiresAt: time.Now().Add(i.ttl),
 	}
 	var buf [16]byte
 	b.write(buf[:])
@@ -169,4 +169,27 @@ func (i *FileSizeIndex) GetStats() fastcache.Stats {
 	var s fastcache.Stats
 	i.cache.UpdateStats(&s)
 	return s
+}
+
+func (i *FileSizeIndex) DumpCache() []CacheDump {
+	d := make([]CacheDump, 0)
+
+	it := i.cache.Iterator()
+
+	for it.SetNext() {
+		val, err := it.Value()
+		if err != nil {
+			i.logger.Warn("error iterating thourgh bucket cache", "error", err)
+			continue
+		}
+
+		var p cachePayload
+		p.read(val.Value())
+		d = append(d, CacheDump{
+			Path:         string(val.Key()),
+			cachePayload: p,
+		})
+	}
+
+	return d
 }

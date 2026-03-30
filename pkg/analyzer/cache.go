@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/netip"
 
+	"github.com/HT4w5/fastcache"
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/VictoriaMetrics/fastcache"
 )
 
 const (
@@ -30,18 +30,18 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		bkt.read(buf[:])
 	}
 
-	bkt.requestCount++
-	bkt.byteCount += request.Sent
-	timeDelta := request.Time.Unix() - bkt.lastUpdate.Unix()
+	bkt.RequestCount++
+	bkt.ByteCount += request.Sent
+	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		bkt.requestCount -= int32(a.config.RequestLeak) * int32(timeDelta)
-		bkt.byteCount -= a.config.ByteLeak * timeDelta
-		bkt.lastUpdate = request.Time
+		bkt.RequestCount -= int32(a.config.RequestLeak) * int32(timeDelta)
+		bkt.ByteCount -= a.config.ByteLeak * timeDelta
+		bkt.LastUpdate = request.Time
 	}
 
 	// Check for overflow
-	if int(bkt.requestCount) > a.config.RequestVolume {
-		a.logger.Debug("request count bucket overflow", "client", request.Client.String(), "count", bkt.requestCount)
+	if int(bkt.RequestCount) > a.config.RequestVolume {
+		a.logger.Debug("request count bucket overflow", "client", request.Client.String(), "count", bkt.RequestCount)
 		var prefixLen int
 		if request.Client.Is4() {
 			prefixLen = a.config.IPv4BanPrefixLen
@@ -51,15 +51,15 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
 			Blame:     requestBucketOverflowBlame,
-			ExpiresAt: bkt.lastUpdate.Add(a.config.RequestBanDuration),
+			ExpiresAt: bkt.LastUpdate.Add(a.config.RequestBanDuration),
 		})
 		// Stop tracking
 		a.bucketCache.Del(key[:])
 		return
 	}
 
-	if bkt.byteCount > a.config.ByteVolume {
-		a.logger.Debug("byte count bucket overflow", "client", request.Client.String(), "count", bkt.byteCount)
+	if bkt.ByteCount > a.config.ByteVolume {
+		a.logger.Debug("byte count bucket overflow", "client", request.Client.String(), "count", bkt.ByteCount)
 		var prefixLen int
 		if request.Client.Is4() {
 			prefixLen = a.config.IPv4BanPrefixLen
@@ -69,7 +69,7 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
 			Blame:     byteBucketOverflowBlame,
-			ExpiresAt: bkt.lastUpdate.Add(a.config.ByteBanDuration),
+			ExpiresAt: bkt.LastUpdate.Add(a.config.ByteBanDuration),
 		})
 		// Stop tracking
 		a.bucketCache.Del(key[:])
@@ -108,17 +108,17 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 
 	// Calculate ratio increment
 	// Scale up for 2 decimals of precision
-	bkt.fileRatio += (request.Sent * fileRatioPrecision) / (size * fileRatioPrecision)
+	bkt.FileRatio += (request.Sent * fileRatioPrecision) / (size * fileRatioPrecision)
 
-	timeDelta := request.Time.Unix() - bkt.lastUpdate.Unix()
+	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		bkt.fileRatio -= a.config.FileRatioLeak * timeDelta
-		bkt.lastUpdate = request.Time
+		bkt.FileRatio -= a.config.FileRatioLeak * timeDelta
+		bkt.LastUpdate = request.Time
 	}
 
 	// Check for overflow
-	if bkt.fileRatio > a.config.FileRatioVolume {
-		a.logger.Debug("file ratio bucket overflow", "client", request.Client.String(), "path", request.URL, "ratio", bkt.fileRatio)
+	if bkt.FileRatio > a.config.FileRatioVolume {
+		a.logger.Debug("file ratio bucket overflow", "client", request.Client.String(), "path", request.URL, "ratio", bkt.FileRatio)
 		var prefixLen int
 		if request.Client.Is4() {
 			prefixLen = a.config.IPv4BanPrefixLen
@@ -128,7 +128,7 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 		a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
 			Blame:     fileBucketOverflowBlame,
-			ExpiresAt: bkt.lastUpdate.Add(a.config.FileRatioBanDuration),
+			ExpiresAt: bkt.LastUpdate.Add(a.config.FileRatioBanDuration),
 		})
 		// Stop tracking
 		a.bucketCache.Del(key[:])
@@ -144,4 +144,46 @@ func (a *Analyzer) GetStats() fastcache.Stats {
 	var s fastcache.Stats
 	a.bucketCache.UpdateStats(&s)
 	return s
+}
+
+func (a *Analyzer) DumpCache() CacheDump {
+	d := CacheDump{
+		ClientBuckets:     make([]ClientBucket, 0),
+		ClientPathBuckets: make([]ClientPathBucket, 0),
+	}
+
+	it := a.bucketCache.Iterator()
+
+	for it.SetNext() {
+		var addr netip.Addr
+		val, err := it.Value()
+		if err != nil {
+			a.logger.Warn("error iterating thourgh bucket cache", "error", err)
+			continue
+		}
+		key := val.Key()
+		if len(key) < 16 {
+			a.logger.Warn("corrupt key encountered when dumping", "key", key)
+			continue
+		}
+		addr = netip.AddrFrom16([16]byte(key[:16])).Unmap()
+		if len(key) > 16 {
+			var p clientPathPayload
+			p.read(val.Value())
+			d.ClientPathBuckets = append(d.ClientPathBuckets, ClientPathBucket{
+				Addr:              addr,
+				Path:              string(key[17:]),
+				clientPathPayload: p,
+			})
+		} else {
+			var p clientPayload
+			p.read(val.Value())
+			d.ClientBuckets = append(d.ClientBuckets, ClientBucket{
+				Addr:          addr,
+				clientPayload: p,
+			})
+		}
+	}
+
+	return d
 }

@@ -5,12 +5,12 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/HT4w5/fastcache"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/logsrc"
 	"github.com/HT4w5/flux/pkg/pool"
-	"github.com/VictoriaMetrics/fastcache"
 	"github.com/docker/go-units"
 )
 

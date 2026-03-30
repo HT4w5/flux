@@ -66,8 +66,10 @@ func New(opts ...func(*APIServer)) *APIServer {
 		v1.POST("/records", s.handlePOSTBanRecord)
 		v1.DELETE("/records", s.handleDELETEBanRecord)
 		v1.GET("/rules", s.handleGETBanRules)
-		v1.GET("/stats/analyzer", s.handleGETAnalyzerStats)
-		v1.GET("/stats/index", s.handleGETIndexStats)
+		v1.GET("/analyzer/stats", s.handleGETAnalyzerStats)
+		v1.GET("/analyzer/cache", s.handleGETAnalyzerCache)
+		v1.GET("/index/stats", s.handleGETIndexStats)
+		v1.GET("/index/cache", s.handleGETIndexCache)
 	}
 
 	s.srv = &http.Server{
@@ -178,12 +180,24 @@ func (s *APIServer) handleGETAnalyzerStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+func (s *APIServer) handleGETAnalyzerCache(c *gin.Context) {
+	dump := s.analyzer.DumpCache()
+	c.JSON(http.StatusOK, dump)
+}
+
 // Index handlers
 
 func (s *APIServer) handleGETIndexStats(c *gin.Context) {
 	stats := s.index.GetStats()
 	c.JSON(http.StatusOK, stats)
 }
+
+func (s *APIServer) handleGETIndexCache(c *gin.Context) {
+	dump := s.index.DumpCache()
+	c.JSON(http.StatusOK, dump)
+}
+
+// Misc
 
 func handlePing(c *gin.Context) {
 	c.JSON(http.StatusOK, msgResp{
