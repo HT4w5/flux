@@ -64,24 +64,24 @@ func (p *NginxJSONParser) Parse(line []byte) (dto.Request, error) {
 	}
 
 	r := dto.Request{
-		Method: internMethod(logEntry.Method),
-		URL:    internString(p.urlLRU, logEntry.URL),
+		Method: internMethod(dequote(logEntry.Method)),
+		URL:    internString(p.urlLRU, dequote(logEntry.URL)),
 		Status: logEntry.Status,
 		Sent:   logEntry.Sent,
-		Host:   internString(p.hostLRU, logEntry.Host),
-		Agent:  internString(p.agentLRU, logEntry.Agent),
+		Host:   internString(p.hostLRU, dequote(logEntry.Host)),
+		Agent:  internString(p.agentLRU, dequote(logEntry.Agent)),
 	}
 
-	r.Time, err = parseNginxTime(logEntry.Time)
-	err = r.Client.UnmarshalText(logEntry.Client)
+	r.Time, err = parseNginxTime(dequote(logEntry.Time))
+	err = r.Client.UnmarshalText(dequote(logEntry.Client))
 	if err != nil {
 		return dto.Request{}, err
 	}
-	err = r.Server.UnmarshalText(logEntry.Server)
+	err = r.Server.UnmarshalText(dequote(logEntry.Server))
 	if err != nil {
 		return dto.Request{}, err
 	}
-	r.Duration, err = parseNginxDuration(logEntry.Duration)
+	r.Duration, err = parseNginxDuration(dequote(logEntry.Duration))
 
 	return r, nil
 }
@@ -174,4 +174,11 @@ func parseNginxTime(b []byte) (time.Time, error) {
 	nsec := (frac * nsPerS) / pow10[len(fracBytes)]
 
 	return time.Unix(sec, nsec), nil
+}
+
+func dequote(b []byte) []byte {
+	if len(b) >= 2 && b[0] == '"' && b[len(b)-1] == '"' {
+		return b[1 : len(b)-1]
+	}
+	return b
 }
