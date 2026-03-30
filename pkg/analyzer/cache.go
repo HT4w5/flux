@@ -89,6 +89,7 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		return
 	}
 
+	a.logger.Debug("setting client cache object", "key", key, "object", bkt)
 	bkt.write(buf[:])
 	a.bucketCache.Set(key[:], buf[:])
 }
@@ -149,13 +150,13 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 			ExpiresAt: bkt.LastUpdate.Add(a.config.FileRatioBanDuration),
 		})
 		// Stop tracking
-		a.bucketCache.Del(key[:])
+		a.bucketCache.Del(keyBuffer[:])
 		return
 	}
 
+	a.logger.Debug("setting client-path cache object", "key", keyBuffer, "object", bkt)
 	bkt.write(buf[:])
-
-	a.bucketCache.Set(key[:], buf[:])
+	a.bucketCache.Set(keyBuffer[:], buf[:])
 }
 
 func (a *Analyzer) GetStats() fastcache.Stats {
