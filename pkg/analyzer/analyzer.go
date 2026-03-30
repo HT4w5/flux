@@ -7,11 +7,19 @@ import (
 
 	"github.com/HT4w5/fastcache"
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/logsrc"
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
+)
+
+type FilterMode bool
+
+const (
+	Whitelist FilterMode = true
+	Blacklist FilterMode = false
 )
 
 // Analyzer config
@@ -38,6 +46,9 @@ type Config struct {
 	// Performance settings
 	NumWorkers int
 	MaxBytes   int64
+
+	// Filter settings
+	FilterMode FilterMode
 }
 
 type Analyzer struct {
@@ -55,7 +66,10 @@ type Analyzer struct {
 	requestChan chan dto.Request
 
 	// Config
-	config Config
+	config                 Config
+	filter                 filter.FilterRule
+	clientBucketFilter     filter.FilterRule
+	clientPathBucketFilter filter.FilterRule
 }
 
 func New(opts ...func(*Analyzer)) *Analyzer {
@@ -75,10 +89,14 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 			IPv6BanPrefixLen:     48,
 			NumWorkers:           8,
 			MaxBytes:             2 * units.GB,
+			FilterMode:           Blacklist,
 		},
 		// Other stuff
-		keyBufferPool: pool.NewBytePool(128),
-		logger:        slog.New(slog.DiscardHandler),
+		keyBufferPool:          pool.NewBytePool(128),
+		logger:                 slog.New(slog.DiscardHandler),
+		filter:                 filter.None{},
+		clientBucketFilter:     filter.All{},
+		clientPathBucketFilter: filter.All{},
 	}
 
 	for _, opt := range opts {
@@ -109,8 +127,20 @@ func (a *Analyzer) worker(id int, ctx context.Context) {
 			a.logger.Info("worker exit", "id", id)
 			return
 		case request := <-a.requestChan:
-			a.updateClientBucket(ctx, &request)
-			a.updateClientPathBucket(ctx, &request)
+			if a.filter.Match(&request) != bool(a.config.FilterMode) {
+				// Drop
+				a.logger.Debug("request dropped by filter", "request", request)
+				continue
+			}
+
+			if a.clientBucketFilter.Match(&request) {
+				a.logger.Debug("request matched for client bucket", "request", request)
+				a.updateClientBucket(ctx, &request)
+			}
+			if a.clientPathBucketFilter.Match(&request) {
+				a.logger.Debug("request matched for client path bucket", "request", request)
+				a.updateClientPathBucket(ctx, &request)
+			}
 		}
 	}
 }
@@ -148,5 +178,26 @@ func WithConfig(config Config) func(*Analyzer) {
 func WithJail(j jail.Jail) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.jail = j
+	}
+}
+
+// WithFilter sets the log filter for Analyzer.
+func WithFilter(f filter.FilterRule) func(*Analyzer) {
+	return func(a *Analyzer) {
+		a.filter = f
+	}
+}
+
+// WithFilter sets the log filter for Analyzer.
+func WithClientBucketFilter(f filter.FilterRule) func(*Analyzer) {
+	return func(a *Analyzer) {
+		a.clientBucketFilter = f
+	}
+}
+
+// WithFilter sets the log filter for Analyzer.
+func WithClientPathBucketFilter(f filter.FilterRule) func(*Analyzer) {
+	return func(a *Analyzer) {
+		a.clientPathBucketFilter = f
 	}
 }

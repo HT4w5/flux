@@ -12,6 +12,7 @@ import (
 	"github.com/HT4w5/flux/pkg/analyzer"
 	"github.com/HT4w5/flux/pkg/api"
 	"github.com/HT4w5/flux/pkg/config"
+	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/jail/sqlite3"
@@ -153,6 +154,36 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Build filter
+	f, err := filter.Build(cfg.Analyzer.Filter)
+	if err != nil {
+		logger.Error("failed to build filter", "error", err)
+		os.Exit(1)
+	}
+
+	cbf, err := filter.Build(cfg.Analyzer.ClientBucketFilter)
+	if err != nil {
+		logger.Error("failed to build filter", "error", err)
+		os.Exit(1)
+	}
+
+	cpbf, err := filter.Build(cfg.Analyzer.ClientPathBucketFilter)
+	if err != nil {
+		logger.Error("failed to build filter", "error", err)
+		os.Exit(1)
+	}
+
+	var filterMode analyzer.FilterMode
+	switch cfg.Analyzer.FilterMode {
+	case "whitelist":
+		filterMode = analyzer.Whitelist
+	case "blacklist":
+		filterMode = analyzer.Blacklist
+	default:
+		logger.Error("unknown filter mode", "mode", cfg.Analyzer.Filter)
+		os.Exit(1)
+	}
+
 	analyzerConfig := analyzer.Config{
 		RequestLeak:          cfg.Analyzer.RequestLeak,
 		RequestVolume:        cfg.Analyzer.RequestVolume,
@@ -167,6 +198,7 @@ func main() {
 		IPv6BanPrefixLen:     cfg.Analyzer.IPv6BanPrefixLen,
 		NumWorkers:           cfg.Analyzer.NumWorkers,
 		MaxBytes:             cfg.Analyzer.MaxBytes,
+		FilterMode:           filterMode,
 	}
 
 	analyzer := analyzer.New(
@@ -175,6 +207,9 @@ func main() {
 		analyzer.WithJail(jailInstance),
 		analyzer.WithLogger(logger),
 		analyzer.WithConfig(analyzerConfig),
+		analyzer.WithFilter(f),
+		analyzer.WithClientBucketFilter(cbf),
+		analyzer.WithClientPathBucketFilter(cpbf),
 	)
 
 	apiServer := api.New(

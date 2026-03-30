@@ -52,19 +52,23 @@ type SQLite3JailConfig struct {
 }
 
 type AnalyzerConfig struct {
-	RequestLeak          int           `mapstructure:"request_leak"`
-	RequestVolume        int           `mapstructure:"request_volume"`
-	RequestBanDuration   time.Duration `mapstructure:"request_ban_duration"`
-	ByteLeak             int64         `mapstructure:"byte_leak"`
-	ByteVolume           int64         `mapstructure:"byte_volume"`
-	ByteBanDuration      time.Duration `mapstructure:"byte_ban_duration"`
-	FileRatioLeak        int64         `mapstructure:"file_ratio_leak"`
-	FileRatioVolume      int64         `mapstructure:"file_ratio_volume"`
-	FileRatioBanDuration time.Duration `mapstructure:"file_ratio_ban_duration"`
-	IPv4BanPrefixLen     int           `mapstructure:"ipv4_ban_prefix_length"`
-	IPv6BanPrefixLen     int           `mapstructure:"ipv6_ban_prefix_length"`
-	NumWorkers           int           `mapstructure:"num_workers"`
-	MaxBytes             int64         `mapstructure:"max_bytes"`
+	RequestLeak            int           `mapstructure:"request_leak"`
+	RequestVolume          int           `mapstructure:"request_volume"`
+	RequestBanDuration     time.Duration `mapstructure:"request_ban_duration"`
+	ByteLeak               int64         `mapstructure:"byte_leak"`
+	ByteVolume             int64         `mapstructure:"byte_volume"`
+	ByteBanDuration        time.Duration `mapstructure:"byte_ban_duration"`
+	FileRatioLeak          int64         `mapstructure:"file_ratio_leak"`
+	FileRatioVolume        int64         `mapstructure:"file_ratio_volume"`
+	FileRatioBanDuration   time.Duration `mapstructure:"file_ratio_ban_duration"`
+	IPv4BanPrefixLen       int           `mapstructure:"ipv4_ban_prefix_length"`
+	IPv6BanPrefixLen       int           `mapstructure:"ipv6_ban_prefix_length"`
+	NumWorkers             int           `mapstructure:"num_workers"`
+	MaxBytes               int64         `mapstructure:"max_bytes"`
+	Filter                 any           `mapstructure:"filter"`
+	FilterMode             string        `mapstructure:"filter_mode"`
+	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
+	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
 }
 
 type APIConfig struct {
