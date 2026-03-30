@@ -230,7 +230,7 @@ func (j *SQLite3Jail) List(ctx context.Context) ([]dto.BanRecord, error) {
 	}
 	defer rows.Close()
 
-	var bans []dto.BanRecord
+	bans := make([]dto.BanRecord, 0)
 	for rows.Next() {
 		var b dto.BanRecord
 		var prefixStr string

@@ -56,6 +56,7 @@ func New(opts ...func(*APIServer)) *APIServer {
 	s.router.Use(gin.Recovery())
 
 	// Setup routes
+	s.router.NoRoute(handleNoRoute)
 	// api
 	api := s.router.Group("api")
 	// v1
@@ -203,6 +204,13 @@ func handlePing(c *gin.Context) {
 	c.JSON(http.StatusOK, msgResp{
 		Code: http.StatusOK,
 		Msg:  "pong",
+	})
+}
+
+func handleNoRoute(c *gin.Context) {
+	c.JSON(http.StatusNotFound, msgResp{
+		Code: http.StatusNotFound,
+		Msg:  "not found",
 	})
 }
 
