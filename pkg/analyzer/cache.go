@@ -101,7 +101,7 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Request) {
 	// Query file size index
 	size, ok := a.index.GetSize([]byte(request.URL))
-	if !ok {
+	if !ok || size == 0 {
 		return // No size info, impossible to track
 	}
 
