@@ -25,9 +25,12 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	var buf clientPayloadBuf
 	var bkt clientPayload
 	key := request.Client.As16()
-	_, ok := a.bucketCache.HasGet(buf[:], key[:])
+	_, ok := a.bucketCache.HasGet(buf[:0], key[:])
 	if ok {
 		bkt.read(buf[:])
+		a.logger.Debug("got client cache object", "key", key, "object", bkt)
+	} else {
+		a.logger.Debug("client cache miss; creating new")
 	}
 
 	bkt.RequestCount++
@@ -114,9 +117,12 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 	key := request.Client.As16()
 	keyBuffer = append(keyBuffer, key[:]...)
 	keyBuffer = append(keyBuffer, request.URL...)
-	_, ok = a.bucketCache.HasGet(buf[:], keyBuffer)
+	_, ok = a.bucketCache.HasGet(buf[:0], keyBuffer)
 	if ok {
 		bkt.read(buf[:])
+		a.logger.Debug("got client-path cache object", "key", keyBuffer, "object", bkt)
+	} else {
+		a.logger.Debug("client-path cache miss; creating new")
 	}
 
 	// Calculate ratio increment
