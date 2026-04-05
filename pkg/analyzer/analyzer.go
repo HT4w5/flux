@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/HT4w5/fastcache"
+	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
@@ -57,7 +57,7 @@ type Analyzer struct {
 	clientPathBucketFilter filter.FilterRule
 	src                    logsrc.LogSource
 	jail                   jail.Jail
-	bucketCache            *fastcache.Cache
+	bucketCache            *cache.Cache
 	keyBufferPool          *pool.BytePool
 	index                  *index.FileSizeIndex
 	logger                 *slog.Logger
@@ -96,7 +96,7 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 		opt(a)
 	}
 
-	a.bucketCache = fastcache.New(int(a.config.MaxBytes))
+	a.bucketCache = cache.New(cache.WithSize(uint64(a.config.MaxBytes)))
 	a.requestChan = make(chan dto.Request)
 
 	return a

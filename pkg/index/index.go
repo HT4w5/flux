@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/HT4w5/fastcache"
+	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
 )
@@ -26,7 +26,7 @@ type FileSizeIndex struct {
 	logger *slog.Logger
 
 	// Internal
-	cache          *fastcache.Cache
+	cache          *cache.Cache
 	routeMap       map[string]string
 	pathBufferPool *pool.BytePool
 
@@ -77,7 +77,7 @@ func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 		opt(i)
 	}
 
-	i.cache = fastcache.New(int(i.maxBytes))
+	i.cache = cache.New(cache.WithSize(uint64(i.maxBytes)))
 
 	return i
 }
@@ -165,10 +165,8 @@ func (i *FileSizeIndex) queryFilesystem(path []byte) int64 {
 	return info.Size()
 }
 
-func (i *FileSizeIndex) GetStats() fastcache.Stats {
-	var s fastcache.Stats
-	i.cache.UpdateStats(&s)
-	return s
+func (i *FileSizeIndex) GetStats() cache.Statistics {
+	return i.cache.Statistics()
 }
 
 func (i *FileSizeIndex) DumpCache() []CacheDump {
@@ -176,17 +174,20 @@ func (i *FileSizeIndex) DumpCache() []CacheDump {
 
 	it := i.cache.Iterator()
 
-	for it.SetNext() {
-		val, err := it.Value()
-		if err != nil {
-			i.logger.Warn("error iterating thourgh bucket cache", "error", err)
-			continue
+	kBuf := i.pathBufferPool.Get()
+	defer i.pathBufferPool.Put(kBuf)
+
+	for {
+		var vBuf payloadBuf
+		k, v, ok := it.GetNext(kBuf, vBuf[:])
+		if !ok {
+			break
 		}
 
 		var p cachePayload
-		p.read(val.Value())
+		p.read(v)
 		d = append(d, CacheDump{
-			Path:         string(val.Key()),
+			Path:         string(k),
 			cachePayload: p,
 		})
 	}

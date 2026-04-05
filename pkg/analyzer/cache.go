@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/netip"
 
-	"github.com/HT4w5/fastcache"
+	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
 )
 
@@ -25,7 +25,7 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	var buf clientPayloadBuf
 	var bkt clientPayload
 	key := request.Client.As16()
-	_, ok := a.bucketCache.HasGet(buf[:0], key[:])
+	_, ok := a.bucketCache.HasGet(buf[:], key[:])
 	if ok {
 		bkt.read(buf[:])
 		a.logger.Debug("got client cache object", "key", key, "object", bkt)
@@ -113,7 +113,7 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 	key := request.Client.As16()
 	keyBuffer = append(keyBuffer, key[:]...)
 	keyBuffer = append(keyBuffer, request.URL...)
-	_, ok = a.bucketCache.HasGet(buf[:0], keyBuffer)
+	_, ok = a.bucketCache.HasGet(buf[:], keyBuffer)
 	if ok {
 		bkt.read(buf[:])
 		a.logger.Debug("got client-path cache object", "key", keyBuffer, "object", bkt)
@@ -161,10 +161,8 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 	a.bucketCache.Set(keyBuffer[:], buf[:])
 }
 
-func (a *Analyzer) GetStats() fastcache.Stats {
-	var s fastcache.Stats
-	a.bucketCache.UpdateStats(&s)
-	return s
+func (a *Analyzer) GetStats() cache.Statistics {
+	return a.bucketCache.Statistics()
 }
 
 func (a *Analyzer) DumpCache() CacheDump {
@@ -174,45 +172,45 @@ func (a *Analyzer) DumpCache() CacheDump {
 	}
 
 	it := a.bucketCache.Iterator()
+	kBuf := a.keyBufferPool.Get()
+	defer a.keyBufferPool.Put(kBuf)
 
-	for it.SetNext() {
+	for {
+		var vBuf [20]byte
+		k, v, ok := it.GetNext(kBuf, vBuf[:])
+		if !ok {
+			break
+		}
+
 		var addr netip.Addr
 		var path string
-		ent, err := it.Value()
-		if err != nil {
-			a.logger.Warn("error iterating thourgh bucket cache", "error", err)
+		if len(k) < 16 {
+			a.logger.Warn("corrupt key encountered when dumping", "key", k)
 			continue
 		}
-		key := ent.Key()
-		if len(key) < 16 {
-			a.logger.Warn("corrupt key encountered when dumping", "key", key)
-			continue
-		}
-		addr = netip.AddrFrom16([16]byte(key[:16])).Unmap()
-		if len(key) > 16 {
-			path = string(key[17:])
+		addr = netip.AddrFrom16([16]byte(k[:16])).Unmap()
+		if len(k) > 16 {
+			path = string(k[17:])
 		}
 
-		val := ent.Value()
-
-		switch len(val) {
+		switch len(v) {
 		case 20:
 			var p clientPayload
-			p.read(val)
+			p.read(v)
 			d.ClientBuckets = append(d.ClientBuckets, ClientBucket{
 				Addr:          addr,
 				clientPayload: p,
 			})
 		case 16:
 			var p clientPathPayload
-			p.read(val)
+			p.read(v)
 			d.ClientPathBuckets = append(d.ClientPathBuckets, ClientPathBucket{
 				Addr:              addr,
 				Path:              path,
 				clientPathPayload: p,
 			})
 		default:
-			a.logger.Warn("invalid payload length", "length", len(val))
+			a.logger.Warn("invalid payload length", "length", len(v))
 		}
 	}
 
