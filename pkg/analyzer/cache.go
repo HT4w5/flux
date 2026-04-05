@@ -16,8 +16,8 @@ const (
 
 /*
 Cache key definitions:
-- client bucket: <addr_bytes>
-- client-path bucket: <addr_bytes>:<path_bytes>
+- client bucket: <addr_bytes> (IPv4 as IPv4-in-IPv6)
+- client-path bucket: <addr_bytes><path_bytes> (IPv4 as IPv4-in-IPv6)
 */
 
 // For request and byte count bucket
@@ -187,7 +187,7 @@ func (a *Analyzer) DumpCache() CacheDump {
 		}
 		addr = netip.AddrFrom16([16]byte(k[:16])).Unmap()
 		if len(k) > 16 {
-			path = string(k[17:])
+			path = string(k[16:])
 		}
 
 		switch len(v) {
