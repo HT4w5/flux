@@ -121,25 +121,22 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 		a.logger.Debug("client-path cache miss; creating new")
 	}
 
-	// Calculate ratio increment
-	// Scale up for 2 decimals of precision
-	bkt.FileRatio += float64(request.Sent) / float64(size)
+	bkt.Sent += request.Sent
 
 	timeDelta := request.Time.Unix() - bkt.LastUpdate.Unix()
 	if timeDelta > 0 {
-		fileRatioLeaked := a.config.FileRatioLeak * float64(timeDelta)
-		if fileRatioLeaked >= bkt.FileRatio {
-			bkt.FileRatio = 0.
+		leaked := int64(a.config.FileRatioLeak * float64(size*timeDelta))
+		if leaked >= bkt.Sent {
+			bkt.Sent = 0
 		} else {
-			bkt.FileRatio -= fileRatioLeaked
+			bkt.Sent -= leaked
 		}
-
 		bkt.LastUpdate = request.Time
 	}
 
 	// Check for overflow
-	if bkt.FileRatio > a.config.FileRatioVolume {
-		a.logger.Debug("file ratio bucket overflow", "client", request.Client.String(), "path", request.URL, "ratio", bkt.FileRatio)
+	if bkt.Sent > int64(a.config.FileRatioVolume*float64(size)) {
+		a.logger.Debug("file ratio bucket overflow", "client", request.Client.String(), "path", request.URL, "sent", bkt.Sent)
 		var prefixLen int
 		if request.Client.Is4() {
 			prefixLen = a.config.IPv4BanPrefixLen

@@ -30,16 +30,16 @@ type clientPathPayloadBuf [16]byte
 
 type clientPathPayload struct {
 	LastUpdate time.Time `json:"last_update"`
-	FileRatio  float64   `json:"file_ratio"` // unit: 1/1e5 files
+	Sent       int64     `json:"sent"`
 }
 
 func (p *clientPathPayload) write(b []byte) {
-	binary.BigEndian.PutUint64(b, uint64(p.FileRatio))
+	binary.BigEndian.PutUint64(b, uint64(p.Sent))
 	binary.BigEndian.PutUint64(b[8:], uint64(p.LastUpdate.Unix()))
 }
 
 func (p *clientPathPayload) read(b []byte) {
-	p.FileRatio = float64(binary.BigEndian.Uint64(b))
+	p.Sent = int64(binary.BigEndian.Uint64(b))
 	p.LastUpdate = time.Unix(int64(binary.BigEndian.Uint64(b[8:])), 0)
 }
 
