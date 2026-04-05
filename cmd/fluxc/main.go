@@ -33,20 +33,20 @@ func main() {
 	pflag.Parse()
 
 	if help, _ := pflag.CommandLine.GetBool("help"); help {
-		fmt.Printf("Usage: %s [OPTIONS]\n", meta.ServerName)
+		fmt.Printf("Usage: %s [OPTIONS]\n", meta.ClientName)
 		fmt.Println("Options:")
 		pflag.PrintDefaults()
 		os.Exit(0)
 	}
 
 	if version, _ := pflag.CommandLine.GetBool("version"); version {
-		fmt.Println(meta.VersionString(meta.ServerName))
+		fmt.Println(meta.VersionString(meta.ClientName))
 		os.Exit(0)
 	}
 
 	// Print banner
 	meta.PrintBanner()
-	meta.PrintlnBGBlue(meta.VersionString(meta.ServerName))
+	meta.PrintlnBGBlue(meta.VersionString(meta.ClientName))
 	fmt.Println()
 
 	logger := setupLogger(cfg.LogLevel)
