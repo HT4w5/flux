@@ -31,6 +31,7 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		a.logger.Debug("got client cache object", "key", key, "object", bkt)
 	} else {
 		a.logger.Debug("client cache miss; creating new")
+		bkt.LastUpdate = request.Time
 	}
 
 	bkt.RequestCount++
@@ -119,6 +120,7 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 		a.logger.Debug("got client-path cache object", "key", keyBuffer, "object", bkt)
 	} else {
 		a.logger.Debug("client-path cache miss; creating new")
+		bkt.LastUpdate = request.Time
 	}
 
 	bkt.Sent += request.Sent
