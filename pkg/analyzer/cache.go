@@ -3,15 +3,17 @@ package analyzer
 import (
 	"context"
 	"net/netip"
+	"strconv"
 
 	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/docker/go-units"
 )
 
 const (
-	requestBucketOverflowBlame = "request count bucket overflow"
-	byteBucketOverflowBlame    = "byte count bucket overflow"
-	fileBucketOverflowBlame    = "file ratio bucket overflow"
+	requestBucketOverflowBlame = "request count overflow: "
+	byteBucketOverflowBlame    = "byte count overflow: "
+	fileBucketOverflowBlame    = "file ratio overflow: "
 )
 
 /*
@@ -65,11 +67,14 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		} else {
 			prefixLen = a.config.IPv6BanPrefixLen
 		}
-		a.jail.Add(ctx, &dto.BanRecord{
+		err := a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
-			Blame:     requestBucketOverflowBlame,
+			Blame:     requestBucketOverflowBlame + strconv.FormatInt(int64(bkt.RequestCount), 10),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.RequestBanDuration),
 		})
+		if err != nil {
+			a.logger.Error("failed to add record to jail", "error", err)
+		}
 		// Stop tracking
 		a.bucketCache.Del(key[:])
 		return
@@ -83,11 +88,14 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 		} else {
 			prefixLen = a.config.IPv6BanPrefixLen
 		}
-		a.jail.Add(ctx, &dto.BanRecord{
+		err := a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
-			Blame:     byteBucketOverflowBlame,
+			Blame:     byteBucketOverflowBlame + units.HumanSize(float64(bkt.ByteCount)),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.ByteBanDuration),
 		})
+		if err != nil {
+			a.logger.Error("failed to add record to jail", "error", err)
+		}
 		// Stop tracking
 		a.bucketCache.Del(key[:])
 		return
@@ -145,11 +153,14 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 		} else {
 			prefixLen = a.config.IPv6BanPrefixLen
 		}
-		a.jail.Add(ctx, &dto.BanRecord{
+		err := a.jail.Add(ctx, &dto.BanRecord{
 			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
-			Blame:     fileBucketOverflowBlame,
+			Blame:     fileBucketOverflowBlame + request.URL + ": " + strconv.FormatFloat(float64(bkt.Sent)/float64(size), 'g', 3, 64),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.FileRatioBanDuration),
 		})
+		if err != nil {
+			a.logger.Error("failed to add record to jail", "error", err)
+		}
 		// Stop tracking
 		a.bucketCache.Del(keyBuffer[:])
 		return
