@@ -8,8 +8,8 @@ import (
 type payloadBuf [16]byte
 
 type cachePayload struct {
-	Size      int64     `json:"size"`
 	ExpiresAt time.Time `json:"expires_at"`
+	Size      int64     `json:"size"`
 }
 
 func (p *cachePayload) write(b []byte) {
@@ -23,6 +23,6 @@ func (p *cachePayload) read(b []byte) {
 }
 
 type CacheDump struct {
-	Path string `json:"path"`
 	cachePayload
+	Path string `json:"path"`
 }

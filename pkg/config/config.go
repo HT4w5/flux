@@ -11,12 +11,12 @@ import (
 )
 
 type Config struct {
-	Log       LogConfig       `mapstructure:"log"`
 	LogSource LogSourceConfig `mapstructure:"log_source"`
+	Log       LogConfig       `mapstructure:"log"`
+	API       APIConfig       `mapstructure:"api"`
 	Index     IndexConfig     `mapstructure:"index"`
 	Jail      JailConfig      `mapstructure:"jail"`
 	Analyzer  AnalyzerConfig  `mapstructure:"analyzer"`
-	API       APIConfig       `mapstructure:"api"`
 }
 
 type LogConfig struct {
@@ -35,9 +35,9 @@ type SyslogSourceConfig struct {
 }
 
 type IndexConfig struct {
+	Routes   map[string]string `mapstructure:"routes"`
 	TTL      time.Duration     `mapstructure:"ttl"`
 	MaxBytes int64             `mapstructure:"max_bytes"`
-	Routes   map[string]string `mapstructure:"routes"`
 }
 
 type JailConfig struct {
@@ -47,11 +47,15 @@ type JailConfig struct {
 
 type SQLite3JailConfig struct {
 	DataSource    string        `mapstructure:"data_source"`
-	PruneInterval time.Duration `mapstructure:"prune_interval"`
 	BanDstPorts   []uint16      `mapstructure:"ban_dst_ports"`
+	PruneInterval time.Duration `mapstructure:"prune_interval"`
 }
 
 type AnalyzerConfig struct {
+	Filter                 any           `mapstructure:"filter"`
+	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
+	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
+	FilterMode             string        `mapstructure:"filter_mode"`
 	RequestLeak            int           `mapstructure:"request_leak"`
 	RequestVolume          int           `mapstructure:"request_volume"`
 	RequestBanDuration     time.Duration `mapstructure:"request_ban_duration"`
@@ -65,10 +69,6 @@ type AnalyzerConfig struct {
 	IPv6BanPrefixLen       int           `mapstructure:"ipv6_ban_prefix_length"`
 	NumWorkers             int           `mapstructure:"num_workers"`
 	MaxBytes               int64         `mapstructure:"max_bytes"`
-	Filter                 any           `mapstructure:"filter"`
-	FilterMode             string        `mapstructure:"filter_mode"`
-	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
-	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
 }
 
 type APIConfig struct {

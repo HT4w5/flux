@@ -9,9 +9,9 @@ import (
 type clientPayloadBuf [20]byte
 
 type clientPayload struct {
-	RequestCount int32     `json:"request_count"`
-	ByteCount    int64     `json:"byte_count"`
 	LastUpdate   time.Time `json:"last_update"`
+	ByteCount    int64     `json:"byte_count"`
+	RequestCount int32     `json:"request_count"`
 }
 
 func (p *clientPayload) write(b []byte) {
@@ -29,8 +29,8 @@ func (p *clientPayload) read(b []byte) {
 type clientPathPayloadBuf [16]byte
 
 type clientPathPayload struct {
-	FileRatio  float64   `json:"file_ratio"` // unit: 1/1e5 files
 	LastUpdate time.Time `json:"last_update"`
+	FileRatio  float64   `json:"file_ratio"` // unit: 1/1e5 files
 }
 
 func (p *clientPathPayload) write(b []byte) {
@@ -49,9 +49,9 @@ type ClientBucket struct {
 }
 
 type ClientPathBucket struct {
+	clientPathPayload
 	Addr netip.Addr `json:"addr"`
 	Path string     `json:"path"`
-	clientPathPayload
 }
 
 type CacheDump struct {

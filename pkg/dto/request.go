@@ -12,9 +12,9 @@ type Request struct {
 	Server   netip.Addr
 	Method   string
 	URL      string
+	Host     string
+	Agent    string
 	Status   int
 	Sent     int64
 	Duration time.Duration
-	Host     string
-	Agent    string
 }

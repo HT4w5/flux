@@ -16,8 +16,8 @@ import (
 )
 
 type msgResp struct {
-	Code int    `json:"code"`
 	Msg  string `json:"msg"`
+	Code int    `json:"code"`
 }
 
 type APIServer struct {

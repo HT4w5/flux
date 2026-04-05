@@ -25,11 +25,11 @@ type nginxJSONLogEntry struct {
 	Server   sonic.NoCopyRawMessage `json:"server"`
 	Method   sonic.NoCopyRawMessage `json:"method"`
 	URL      sonic.NoCopyRawMessage `json:"url"`
-	Status   int                    `json:"status"`
-	Sent     int64                  `json:"sent"`
 	Duration sonic.NoCopyRawMessage `json:"duration"`
 	Host     sonic.NoCopyRawMessage `json:"host"`
 	Agent    sonic.NoCopyRawMessage `json:"agent"`
+	Status   int                    `json:"status"`
+	Sent     int64                  `json:"sent"`
 }
 
 type NginxJSONParser struct {

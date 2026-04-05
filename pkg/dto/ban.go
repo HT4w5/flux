@@ -7,10 +7,10 @@ import (
 
 // Ban record stored in jail
 type BanRecord struct {
-	ID        int64        `json:"id"`
 	Prefix    netip.Prefix `json:"prefix"`
-	Blame     string       `json:"blame"`
 	ExpiresAt time.Time    `json:"expires_at"`
+	Blame     string       `json:"blame"`
+	ID        int64        `json:"id"`
 }
 
 // Ban rule compiled by jail

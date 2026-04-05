@@ -61,14 +61,12 @@ func WithParser(parser parser.Parser) func(*SyslogSource) {
 
 // Receive logs via a syslog server
 type SyslogSource struct {
+	parser       parser.Parser
 	srv          *syslog.Server
 	logPartsChan syslog.LogPartsChannel
 	logger       *slog.Logger
-	parser       parser.Parser
-
-	// Config
-	network Network
-	addr    string
+	addr         string
+	network      Network
 }
 
 func New(opts ...func(*SyslogSource)) *SyslogSource {

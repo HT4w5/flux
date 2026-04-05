@@ -35,26 +35,19 @@ var (
 
 // SQLite3Jail implements Jail with sqlite3 database
 type SQLite3Jail struct {
-	// External
-	logger *slog.Logger
-
-	// Internal
-	db           *sql.DB
-	shutdownMu   sync.RWMutex // Lock for shutdown
-	isShutdown   bool
-	cancelWorker context.CancelFunc
-
-	// Statements
-	add     *sql.Stmt
-	del     *sql.Stmt
-	list    *sql.Stmt
-	compile *sql.Stmt
-	prune   *sql.Stmt
-
-	// Config
+	db             *sql.DB
+	cancelWorker   context.CancelFunc
+	prune          *sql.Stmt
+	add            *sql.Stmt
+	del            *sql.Stmt
+	list           *sql.Stmt
+	compile        *sql.Stmt
+	logger         *slog.Logger
 	dataSourceName string
-	pruneInterval  time.Duration
 	banDstPorts    []uint16 // TODO?: add this to dto.BanRecord and decide on analyzer layer
+	pruneInterval  time.Duration
+	shutdownMu     sync.RWMutex // Lock at shutdown
+	isShutdown     bool
 }
 
 func New(opts ...func(*SQLite3Jail)) *SQLite3Jail {

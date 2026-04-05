@@ -52,24 +52,17 @@ type Config struct {
 }
 
 type Analyzer struct {
-	// Internal
-	bucketCache   *fastcache.Cache
-	keyBufferPool *pool.BytePool
-
-	// External
-	src    logsrc.LogSource
-	index  *index.FileSizeIndex
-	jail   jail.Jail
-	logger *slog.Logger
-
-	// Channels
-	requestChan chan dto.Request
-
-	// Config
-	config                 Config
 	filter                 filter.FilterRule
 	clientBucketFilter     filter.FilterRule
 	clientPathBucketFilter filter.FilterRule
+	src                    logsrc.LogSource
+	jail                   jail.Jail
+	bucketCache            *fastcache.Cache
+	keyBufferPool          *pool.BytePool
+	index                  *index.FileSizeIndex
+	logger                 *slog.Logger
+	requestChan            chan dto.Request
+	config                 Config
 }
 
 func New(opts ...func(*Analyzer)) *Analyzer {

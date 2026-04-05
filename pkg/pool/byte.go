@@ -3,8 +3,8 @@ package pool
 import "sync"
 
 type BytePool struct {
-	size int
 	pool sync.Pool
+	size int
 }
 
 func NewBytePool(size int) *BytePool {
