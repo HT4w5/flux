@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-type Config struct {
+type ServerConfig struct {
 	LogSource LogSourceConfig `mapstructure:"log_source"`
 	Log       LogConfig       `mapstructure:"log"`
 	API       APIConfig       `mapstructure:"api"`
@@ -75,10 +75,10 @@ type APIConfig struct {
 	ListenAddr string `mapstructure:"listen_addr"`
 }
 
-func (cfg *Config) Load() error {
+func (cfg *ServerConfig) Load() error {
 	vp := viper.New()
 	vp.SetConfigName("config")
-	vp.AddConfigPath(fmt.Sprintf("/etc/%s/", meta.Name))
+	vp.AddConfigPath(fmt.Sprintf("/etc/%s/", meta.ServerName))
 	vp.AddConfigPath(".")
 
 	err := vp.ReadInConfig()
@@ -95,7 +95,7 @@ func (cfg *Config) Load() error {
 	))
 }
 
-func (cfg *Config) LoadFromPath(path string) error {
+func (cfg *ServerConfig) LoadFromPath(path string) error {
 	vp := viper.New()
 	vp.SetConfigFile(path)
 
@@ -113,8 +113,8 @@ func (cfg *Config) LoadFromPath(path string) error {
 	))
 }
 
-func Default() *Config {
-	return &Config{
+func DefaultServerConfig() *ServerConfig {
+	return &ServerConfig{
 		Log: LogConfig{
 			Level: "info",
 		},

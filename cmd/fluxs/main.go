@@ -34,31 +34,23 @@ func main() {
 	pflag.Parse()
 
 	if help, _ := pflag.CommandLine.GetBool("help"); help {
-		fmt.Printf("Usage: %s [OPTIONS]\n", meta.Name)
+		fmt.Printf("Usage: %s [OPTIONS]\n", meta.ServerName)
 		fmt.Println("Options:")
 		pflag.PrintDefaults()
 		os.Exit(0)
 	}
 
 	if version, _ := pflag.CommandLine.GetBool("version"); version {
-		fmt.Println(meta.VersionLong)
+		fmt.Println(meta.VersionString(meta.ServerName))
 		os.Exit(0)
 	}
 
 	// Print banner
-	fmt.Println()
-	printlnFGBlue(` ███████╗██╗     ██╗   ██╗██╗  ██╗`)
-	printlnFGBlue(` ██╔════╝██║     ██║   ██║╚██╗██╔╝`)
-	printlnFGBlue(` █████╗  ██║     ██║   ██║ ╚███╔╝ `)
-	printlnFGBlue(` ██╔══╝  ██║     ██║   ██║ ██╔██╗ `)
-	printlnFGBlue(` ██║     ███████╗╚██████╔╝██╔╝ ██╗`)
-	printlnFGBlue(` ╚═╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝`)
-	printlnFGBlue(` ────────────────────────────────►`)
-	fmt.Print(" ")
-	printlnBGBlue(meta.VersionLong)
+	meta.PrintBanner()
+	meta.PrintlnBGBlue(meta.VersionString(meta.ServerName))
 	fmt.Println()
 
-	cfg := config.Default()
+	cfg := config.DefaultServerConfig()
 
 	configPath, _ := pflag.CommandLine.GetString("config")
 	if configPath != "" {
@@ -252,12 +244,4 @@ func setupLogger(level string) *slog.Logger {
 		SrcFileMode:   slogcolor.ShortFile,
 		SrcFileLength: 20,
 	}))
-}
-
-func printlnFGBlue(str string) {
-	fmt.Println("\x1b[0;34m" + str + "\x1b[0m")
-}
-
-func printlnBGBlue(str string) {
-	fmt.Println("\x1b[44m" + str + "\x1b[0m")
 }
