@@ -27,6 +27,13 @@ import (
 )
 
 func main() {
+	ok := entryPoint()
+	if !ok {
+		os.Exit(1)
+	}
+}
+
+func entryPoint() bool {
 	pflag.StringP("config", "c", "", "config file path")
 	pflag.StringP("log-level", "l", "", "log level (override config file)")
 	pflag.BoolP("version", "v", false, "show version")
@@ -37,12 +44,12 @@ func main() {
 		fmt.Printf("Usage: %s [OPTIONS]\n", meta.ServerName)
 		fmt.Println("Options:")
 		pflag.PrintDefaults()
-		os.Exit(0)
+		return true
 	}
 
 	if version, _ := pflag.CommandLine.GetBool("version"); version {
 		fmt.Println(meta.VersionString(meta.ServerName))
-		os.Exit(0)
+		return true
 	}
 
 	// Print banner
@@ -50,13 +57,14 @@ func main() {
 	meta.PrintlnBGBlue(meta.VersionString(meta.ServerName))
 	fmt.Println()
 
+	// Load config
 	cfg := config.DefaultServerConfig()
 
 	configPath, _ := pflag.CommandLine.GetString("config")
 	if configPath != "" {
 		if err := cfg.LoadFromPath(configPath); err != nil {
 			fmt.Fprintf(os.Stderr, "failed to load config from %s: %v\n", configPath, err)
-			os.Exit(1)
+			return false
 		}
 	} else {
 		if err := cfg.Load(); err != nil {
@@ -64,6 +72,7 @@ func main() {
 		}
 	}
 
+	// Set up logger
 	logLevel, _ := pflag.CommandLine.GetString("log-level")
 	if logLevel != "" {
 		cfg.Log.Level = logLevel
@@ -74,6 +83,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Create parser
 	var p parser.Parser
 	var err error
 	switch cfg.LogSource.Parser {
@@ -81,13 +91,14 @@ func main() {
 		p, err = nginx.New()
 		if err != nil {
 			logger.Error("failed to create parser")
-			os.Exit(1)
+			return false
 		}
 	default:
 		logger.Error("unknown parser", "parser", cfg.LogSource.Parser)
-		os.Exit(1)
+		return false
 	}
 
+	// Create log source
 	var logSource logsrc.LogSource
 	switch cfg.LogSource.Method {
 	case "syslog":
@@ -101,7 +112,7 @@ func main() {
 			network = syslog.Unixgram
 		default:
 			logger.Error("unknown syslog network", "network", cfg.LogSource.Syslog.Network)
-			os.Exit(1)
+			return false
 		}
 
 		logSource = syslog.New(
@@ -111,9 +122,10 @@ func main() {
 		)
 	default:
 		logger.Error("unknown log source method", "method", cfg.LogSource.Method)
-		os.Exit(1)
+		return false
 	}
 
+	// Create file size index
 	fileSizeIndexOpts := []func(*index.FileSizeIndex){
 		index.WithTTL(cfg.Index.TTL),
 		index.WithmaxBytes(cfg.Index.MaxBytes),
@@ -126,6 +138,7 @@ func main() {
 
 	fileSizeIndex := index.New(fileSizeIndexOpts...)
 
+	// Create jail
 	var jailInstance jail.Jail
 	switch cfg.Jail.Method {
 	case "sqlite3":
@@ -137,32 +150,32 @@ func main() {
 		)
 		if err := j.Init(ctx); err != nil {
 			logger.Error("failed to initialize jail", "error", err)
-			os.Exit(1)
+			return false
 		}
 		jailInstance = j
 		defer jailInstance.Close()
 	default:
 		logger.Error("unknown jail method", "method", cfg.Jail.Method)
-		os.Exit(1)
+		return false
 	}
 
 	// Build filter
 	f, err := filter.Build(cfg.Analyzer.Filter)
 	if err != nil {
 		logger.Error("failed to build filter", "error", err)
-		os.Exit(1)
+		return false
 	}
 
 	cbf, err := filter.Build(cfg.Analyzer.ClientBucketFilter)
 	if err != nil {
 		logger.Error("failed to build filter", "error", err)
-		os.Exit(1)
+		return false
 	}
 
 	cpbf, err := filter.Build(cfg.Analyzer.ClientPathBucketFilter)
 	if err != nil {
 		logger.Error("failed to build filter", "error", err)
-		os.Exit(1)
+		return false
 	}
 
 	var filterMode analyzer.FilterMode
@@ -173,9 +186,10 @@ func main() {
 		filterMode = analyzer.Blacklist
 	default:
 		logger.Error("unknown filter mode", "mode", cfg.Analyzer.Filter)
-		os.Exit(1)
+		return false
 	}
 
+	// Create analyzer
 	analyzerConfig := analyzer.Config{
 		RequestLeak:          cfg.Analyzer.RequestLeak,
 		RequestVolume:        cfg.Analyzer.RequestVolume,
@@ -214,11 +228,12 @@ func main() {
 
 	analyzer.Start(ctx)
 	apiServer.Start()
+	defer apiServer.Shutdown()
 
 	<-ctx.Done()
 	logger.Info("shutting down")
 
-	apiServer.Shutdown()
+	return true
 }
 
 func setupLogger(level string) *slog.Logger {
