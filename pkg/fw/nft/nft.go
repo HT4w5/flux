@@ -57,7 +57,7 @@ func (d *NFTablesDriver) Install(rules []dto.BanRule) error {
 		Name:     chainName,
 		Table:    table,
 		Type:     nftables.ChainTypeFilter,
-		Hooknum:  nftables.ChainHookInput,
+		Hooknum:  nftables.ChainHookPrerouting,
 		Priority: nftables.ChainPriorityRaw,
 	})
 
