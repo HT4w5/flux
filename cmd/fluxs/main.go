@@ -160,32 +160,47 @@ func entryPoint() bool {
 	}
 
 	// Build filter
-	f, err := filter.Build(cfg.Analyzer.Filter)
-	if err != nil {
-		logger.Error("failed to build filter", "error", err)
-		return false
+	var f filter.FilterRule
+	if cfg.Analyzer.IngressFilter != nil {
+		f, err = filter.Build(cfg.Analyzer.IngressFilter)
+		if err != nil {
+			logger.Error("failed to build filter", "error", err)
+			return false
+		}
+	} else {
+		f = filter.None{}
 	}
 
-	cbf, err := filter.Build(cfg.Analyzer.ClientBucketFilter)
-	if err != nil {
-		logger.Error("failed to build filter", "error", err)
-		return false
+	var cbf filter.FilterRule
+	if cfg.Analyzer.ClientBucketFilter != nil {
+		cbf, err = filter.Build(cfg.Analyzer.ClientBucketFilter)
+		if err != nil {
+			logger.Error("failed to build filter", "error", err)
+			return false
+		}
+	} else {
+		cbf = filter.All{}
 	}
 
-	cpbf, err := filter.Build(cfg.Analyzer.ClientPathBucketFilter)
-	if err != nil {
-		logger.Error("failed to build filter", "error", err)
-		return false
+	var cpbf filter.FilterRule
+	if cfg.Analyzer.ClientPathBucketFilter != nil {
+		cpbf, err = filter.Build(cfg.Analyzer.ClientPathBucketFilter)
+		if err != nil {
+			logger.Error("failed to build filter", "error", err)
+			return false
+		}
+	} else {
+		cpbf = filter.All{}
 	}
 
 	var filterMode analyzer.FilterMode
-	switch cfg.Analyzer.FilterMode {
+	switch cfg.Analyzer.IngressFilterMode {
 	case "whitelist":
 		filterMode = analyzer.Whitelist
 	case "blacklist":
 		filterMode = analyzer.Blacklist
 	default:
-		logger.Error("unknown filter mode", "mode", cfg.Analyzer.Filter)
+		logger.Error("unknown filter mode", "mode", cfg.Analyzer.IngressFilter)
 		return false
 	}
 
@@ -213,7 +228,7 @@ func entryPoint() bool {
 		analyzer.WithJail(jailInstance),
 		analyzer.WithLogger(logger),
 		analyzer.WithConfig(analyzerConfig),
-		analyzer.WithFilter(f),
+		analyzer.WithIngressFilter(f),
 		analyzer.WithClientBucketFilter(cbf),
 		analyzer.WithClientPathBucketFilter(cpbf),
 	)

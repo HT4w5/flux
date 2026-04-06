@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/HT4w5/flux/pkg/analyzer"
@@ -136,14 +137,9 @@ func (s *APIServer) handlePOSTBanRecord(c *gin.Context) {
 	})
 }
 
-type deleteRequest struct {
-	id int64 `form:"id" binding:"required,gt=0"`
-}
-
 func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
-	var req deleteRequest
-
-	if err := c.ShouldBindQuery(&req); err != nil {
+	id, err := strconv.ParseInt(c.Query("id"), 10, 64)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, msgResp{
 			Code: http.StatusBadRequest,
 			Msg:  err.Error(),
@@ -151,7 +147,7 @@ func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
 		return
 	}
 
-	if err := s.jail.Del(c.Request.Context(), req.id); err != nil {
+	if err := s.jail.Del(c.Request.Context(), id); err != nil {
 		c.JSON(http.StatusInternalServerError, msgResp{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),

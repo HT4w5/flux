@@ -52,10 +52,10 @@ type SQLite3JailConfig struct {
 }
 
 type AnalyzerConfig struct {
-	Filter                 any           `mapstructure:"filter"`
+	IngressFilter          any           `mapstructure:"filter"`
 	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
 	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
-	FilterMode             string        `mapstructure:"filter_mode"`
+	IngressFilterMode      string        `mapstructure:"filter_mode"`
 	RequestLeak            int           `mapstructure:"request_leak"`
 	RequestVolume          int           `mapstructure:"request_volume"`
 	RequestBanDuration     time.Duration `mapstructure:"request_ban_duration"`
@@ -153,6 +153,7 @@ func DefaultServerConfig() *ServerConfig {
 			IPv6BanPrefixLen:     48,
 			NumWorkers:           8,
 			MaxBytes:             2 * units.GiB,
+			IngressFilterMode:    "blacklist",
 		},
 		API: APIConfig{
 			ListenAddr: ":80",

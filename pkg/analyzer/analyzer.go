@@ -52,7 +52,7 @@ type Config struct {
 }
 
 type Analyzer struct {
-	filter                 filter.FilterRule
+	ingressFilter          filter.FilterRule
 	clientBucketFilter     filter.FilterRule
 	clientPathBucketFilter filter.FilterRule
 	src                    logsrc.LogSource
@@ -87,7 +87,7 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 		// Other stuff
 		keyBufferPool:          pool.NewBytePool(128),
 		logger:                 slog.New(slog.DiscardHandler),
-		filter:                 filter.None{},
+		ingressFilter:          filter.None{},
 		clientBucketFilter:     filter.All{},
 		clientPathBucketFilter: filter.All{},
 	}
@@ -120,7 +120,7 @@ func (a *Analyzer) worker(id int, ctx context.Context) {
 			a.logger.Info("worker exit", "id", id)
 			return
 		case request := <-a.requestChan:
-			if a.filter.Match(&request) != bool(a.config.FilterMode) {
+			if a.ingressFilter.Match(&request) != bool(a.config.FilterMode) {
 				// Drop
 				a.logger.Debug("request dropped by filter", "request", request)
 				continue
@@ -174,21 +174,21 @@ func WithJail(j jail.Jail) func(*Analyzer) {
 	}
 }
 
-// WithFilter sets the log filter for Analyzer.
-func WithFilter(f filter.FilterRule) func(*Analyzer) {
+// WithIngressFilter sets the log filter for Analyzer.
+func WithIngressFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
-		a.filter = f
+		a.ingressFilter = f
 	}
 }
 
-// WithFilter sets the log filter for Analyzer.
+// WithIngressFilter sets the log filter for Analyzer.
 func WithClientBucketFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.clientBucketFilter = f
 	}
 }
 
-// WithFilter sets the log filter for Analyzer.
+// WithIngressFilter sets the log filter for Analyzer.
 func WithClientPathBucketFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.clientPathBucketFilter = f
