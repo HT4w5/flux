@@ -51,14 +51,17 @@ func main() {
 
 	logger := setupLogger(cfg.LogLevel)
 
+	logger.Info("using config", "config", cfg)
+
 	var err error
 	cfg.UpdateInterval, err = time.ParseDuration(uiStr)
 	if err != nil {
 		logger.Error("invalid update duration", "error", err)
 	}
-	//if cfg.UpdateInterval < time.Minute {
-	//	cfg.UpdateInterval = time.Minute
-	//}
+	if cfg.UpdateInterval < time.Minute {
+		cfg.UpdateInterval = time.Minute
+		logger.Warn("update interval too short; using 1m")
+	}
 
 	var fw fw.FirewallDriver
 	switch cfg.FirewallDriver {
@@ -103,11 +106,14 @@ func main() {
 	}
 
 	// Test install
+	logger.Info("testing fetch and install")
 	if err := install(); err != nil {
 		logger.Error("install failed; exiting", "err", err)
 		fw.Reset()
 		os.Exit(1)
 	}
+
+	logger.Info("test success")
 
 	ticker := time.NewTicker(cfg.UpdateInterval)
 	defer ticker.Stop()
@@ -118,12 +124,14 @@ func main() {
 	for {
 		select {
 		case <-ctx.Done():
+			logger.Info("reset firewall and exit")
 			err = fw.Reset()
 			if err != nil {
 				logger.Error("failed to reset firewall")
 			}
 			return
 		case <-ticker.C:
+			logger.Info("updating rules")
 			install()
 		}
 	}
