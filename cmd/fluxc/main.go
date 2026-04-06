@@ -71,17 +71,43 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Test endpoint
-	resp, err := http.Get(cfg.RuleEndpoint)
-	if err != nil {
-		logger.Error("endpoint unreachable", "error", err)
+	install := func() error {
+		// Fetch rules
+		resp, err := http.Get(cfg.RuleEndpoint)
+		if err != nil {
+			logger.Error("failed to fetch rules", "error", err)
+			return err
+		}
+		if resp.StatusCode != http.StatusOK {
+			logger.Warn("fetch rules status not ok", "status", resp.StatusCode)
+			return err
+		}
+
+		var rules []dto.BanRule
+		dec := json.NewDecoder(resp.Body)
+		err = dec.Decode(&rules)
+		resp.Body.Close()
+		if err != nil {
+			logger.Error("failed to decode rules", "error", err)
+			return err
+		}
+
+		// Install rules
+		err = fw.Install(rules)
+		if err != nil {
+			logger.Error("failed to install rules", "error", err)
+			return err
+		}
+
+		return nil
+	}
+
+	// Test install
+	if err := install(); err != nil {
+		logger.Error("install failed; exiting", "err", err)
+		fw.Reset()
 		os.Exit(1)
 	}
-	if resp.StatusCode != http.StatusOK {
-		logger.Error("endpoint status not ok", "status", resp.StatusCode)
-		os.Exit(1)
-	}
-	resp.Body.Close()
 
 	ticker := time.NewTicker(cfg.UpdateInterval)
 	defer ticker.Stop()
@@ -98,31 +124,7 @@ func main() {
 			}
 			return
 		case <-ticker.C:
-			// Fetch rules
-			resp, err := http.Get(cfg.RuleEndpoint)
-			if err != nil {
-				logger.Error("failed to fetch rules", "error", err)
-				continue
-			}
-			if resp.StatusCode != http.StatusOK {
-				logger.Warn("fetch rules status not ok", "status", resp.StatusCode)
-				continue
-			}
-
-			var rules []dto.BanRule
-			dec := json.NewDecoder(resp.Body)
-			err = dec.Decode(&rules)
-			resp.Body.Close()
-			if err != nil {
-				logger.Error("failed to decode rules", "error", err)
-				continue
-			}
-
-			// Install rules
-			err = fw.Install(rules)
-			if err != nil {
-				logger.Error("failed to install rules", "error", err)
-			}
+			install()
 		}
 	}
 }
