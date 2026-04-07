@@ -54,7 +54,7 @@ type SQLite3JailConfig struct {
 }
 
 type AnalyzerConfig struct {
-	IngressFilter          any           `mapstructure:"filter"`
+	IngressFilter          any           `mapstructure:"ingress_filter"`
 	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
 	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
 	IngressFilterMode      string        `mapstructure:"filter_mode"`
