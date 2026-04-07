@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/HT4w5/trie"
 	"go4.org/netipx"
 )
 
@@ -106,16 +107,37 @@ func (u URL) Match(r *dto.Request) bool {
 	return u == URL(r.URL)
 }
 
+type URLSet map[string]struct{}
+
+func (us URLSet) Match(r *dto.Request) bool {
+	_, ok := us[r.URL]
+	return ok
+}
+
 type URLPrefix string
 
 func (up URLPrefix) Match(r *dto.Request) bool {
 	return strings.HasPrefix(r.URL, string(up))
 }
 
+type URLSuffix string
+
+func (up URLSuffix) Match(r *dto.Request) bool {
+	return strings.HasSuffix(r.URL, string(up))
+}
+
 type URLKeyword string
 
 func (uk URLKeyword) Match(r *dto.Request) bool {
 	return strings.Contains(r.URL, string(uk))
+}
+
+type URLPrefixSet struct {
+	trie trie.Trie
+}
+
+func (ups URLPrefixSet) Match(r *dto.Request) bool {
+	return ups.trie.HasPrefixOf(r.URL)
 }
 
 // Status rules
@@ -200,4 +222,11 @@ type AgentKeyword string
 
 func (ak AgentKeyword) Match(r *dto.Request) bool {
 	return strings.Contains(r.Agent, string(ak))
+}
+
+type AgentSet map[string]struct{}
+
+func (as AgentSet) Match(r *dto.Request) bool {
+	_, ok := as[r.Agent]
+	return ok
 }

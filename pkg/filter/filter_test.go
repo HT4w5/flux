@@ -3,10 +3,12 @@ package filter
 import (
 	"math/rand"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/HT4w5/trie"
 	"go4.org/netipx"
 )
 
@@ -159,6 +161,275 @@ func TestBeforeRandom(t *testing.T) {
 		if result != expected {
 			t.Errorf("Test %d: Before rule mismatch. Request time: %v, Rule time: %v, Expected %v, got %v",
 				i, reqTime, ruleTime, expected, result)
+		}
+	}
+}
+
+// Test URLSuffix rule
+func TestURLSuffix(t *testing.T) {
+	req := createTestRequest()
+
+	// Test pass: URL has the suffix
+	urlSuffixRule := URLSuffix("/users")
+
+	if !urlSuffixRule.Match(req) {
+		t.Error("URLSuffix rule should match when URL has the suffix")
+	}
+
+	// Test fail: URL doesn't have the suffix
+	urlSuffixRule2 := URLSuffix(".html")
+
+	if urlSuffixRule2.Match(req) {
+		t.Error("URLSuffix rule should not match when URL doesn't have the suffix")
+	}
+}
+
+func TestURLSuffixRandom(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	const numTests = 100
+
+	suffixes := []string{".html", ".css", ".js", ".jpg", ".png", "/users", "/api", "/admin", "/search", "/test"}
+
+	for i := 0; i < numTests; i++ {
+		// Create random request
+		req := createRandomRequest(rng)
+
+		// Choose a random suffix
+		expectedSuffix := suffixes[rng.Intn(len(suffixes))]
+		urlSuffixRule := URLSuffix(expectedSuffix)
+
+		result := urlSuffixRule.Match(req)
+		expected := len(req.URL) >= len(expectedSuffix) && req.URL[len(req.URL)-len(expectedSuffix):] == expectedSuffix
+
+		if result != expected {
+			t.Errorf("Test %d: URLSuffix rule mismatch. Request URL: %q, Rule suffix: %q, Expected %v, got %v",
+				i, req.URL, expectedSuffix, expected, result)
+		}
+	}
+}
+
+// Test URLSet rule
+func TestURLSet(t *testing.T) {
+	req := createTestRequest()
+
+	// Test pass: URL is in the set
+	urlSetRule := URLSet{
+		"/api/v1/users": struct{}{},
+		"/api/v1/posts": struct{}{},
+		"/static":       struct{}{},
+	}
+
+	if !urlSetRule.Match(req) {
+		t.Error("URLSet rule should match when URL is in the set")
+	}
+
+	// Test fail: URL is not in the set
+	urlSetRule2 := URLSet{
+		"/api/v1/posts": struct{}{},
+		"/static":       struct{}{},
+	}
+
+	if urlSetRule2.Match(req) {
+		t.Error("URLSet rule should not match when URL is not in the set")
+	}
+
+	// Test empty set
+	urlSetRule3 := URLSet{}
+	if urlSetRule3.Match(req) {
+		t.Error("URLSet rule should not match when set is empty")
+	}
+}
+
+func TestURLSetRandom(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	const numTests = 100
+
+	possibleURLs := []string{
+		"/",
+		"/index.html",
+		"/api/v1/users",
+		"/static/css/style.css",
+		"/images/photo.jpg",
+		"/blog/post/123",
+		"/search?q=test",
+		"/admin/dashboard",
+		"/products/electronics",
+		"/user/profile/settings",
+	}
+
+	for i := 0; i < numTests; i++ {
+		// Create random request
+		req := createRandomRequest(rng)
+
+		// Create a random URL set
+		setSize := rng.Intn(5) + 1
+		urlSet := make(URLSet, setSize)
+		inSet := false
+
+		for j := 0; j < setSize; j++ {
+			url := possibleURLs[rng.Intn(len(possibleURLs))]
+			urlSet[url] = struct{}{}
+			if url == req.URL {
+				inSet = true
+			}
+		}
+
+		result := urlSet.Match(req)
+
+		if result != inSet {
+			t.Errorf("Test %d: URLSet rule mismatch. Request URL: %q, Expected %v, got %v",
+				i, req.URL, inSet, result)
+		}
+	}
+}
+
+// Test URLPrefixSet rule
+func TestURLPrefixSet(t *testing.T) {
+	req := createTestRequest()
+
+	// Test pass: URL has a prefix in the set
+	urlPrefixSetRule := URLPrefixSet{
+		trie: trie.New([]string{"/api", "/static", "/images"}),
+	}
+
+	if !urlPrefixSetRule.Match(req) {
+		t.Error("URLPrefixSet rule should match when URL has a prefix in the set")
+	}
+
+	// Test fail: URL doesn't have a prefix in the set
+	urlPrefixSetRule2 := URLPrefixSet{
+		trie: trie.New([]string{"/static", "/images", "/admin"}),
+	}
+
+	if urlPrefixSetRule2.Match(req) {
+		t.Error("URLPrefixSet rule should not match when URL doesn't have a prefix in the set")
+	}
+
+	// Test empty prefix set
+	urlPrefixSetRule3 := URLPrefixSet{
+		trie: trie.New([]string{}),
+	}
+	if urlPrefixSetRule3.Match(req) {
+		t.Error("URLPrefixSet rule should not match when prefix set is empty")
+	}
+}
+
+func TestURLPrefixSetRandom(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	const numTests = 100
+
+	possiblePrefixes := []string{
+		"/api",
+		"/static",
+		"/images",
+		"/admin",
+		"/user",
+		"/blog",
+		"/search",
+		"/products",
+		"/dashboard",
+		"/settings",
+	}
+
+	for i := 0; i < numTests; i++ {
+		// Create random request
+		req := createRandomRequest(rng)
+
+		// Create a random prefix set
+		setSize := rng.Intn(5) + 1
+		prefixes := make([]string, 0, setSize)
+		hasPrefix := false
+
+		for j := 0; j < setSize; j++ {
+			prefix := possiblePrefixes[rng.Intn(len(possiblePrefixes))]
+			prefixes = append(prefixes, prefix)
+			if strings.HasPrefix(req.URL, prefix) {
+				hasPrefix = true
+			}
+		}
+
+		urlPrefixSetRule := URLPrefixSet{
+			trie: trie.New(prefixes),
+		}
+
+		result := urlPrefixSetRule.Match(req)
+
+		if result != hasPrefix {
+			t.Errorf("Test %d: URLPrefixSet rule mismatch. Request URL: %q, Prefixes: %v, Expected %v, got %v",
+				i, req.URL, prefixes, hasPrefix, result)
+		}
+	}
+}
+
+// Test AgentSet rule
+func TestAgentSet(t *testing.T) {
+	req := createTestRequest()
+
+	// Test pass: agent is in the set
+	agentSetRule := AgentSet{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36": struct{}{},
+		"curl/7.88.1":           struct{}{},
+		"PostmanRuntime/7.36.3": struct{}{},
+	}
+
+	if !agentSetRule.Match(req) {
+		t.Error("AgentSet rule should match when agent is in the set")
+	}
+
+	// Test fail: agent is not in the set
+	agentSetRule2 := AgentSet{
+		"curl/7.88.1":           struct{}{},
+		"PostmanRuntime/7.36.3": struct{}{},
+	}
+
+	if agentSetRule2.Match(req) {
+		t.Error("AgentSet rule should not match when agent is not in the set")
+	}
+
+	// Test empty set
+	agentSetRule3 := AgentSet{}
+	if agentSetRule3.Match(req) {
+		t.Error("AgentSet rule should not match when set is empty")
+	}
+}
+
+func TestAgentSetRandom(t *testing.T) {
+	rng := rand.New(rand.NewSource(42))
+	const numTests = 100
+
+	possibleAgents := []string{
+		"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+		"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+		"Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+		"curl/7.88.1",
+		"PostmanRuntime/7.36.3",
+		"Go-http-client/2.0",
+		"python-requests/2.31.0",
+		"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+	}
+
+	for i := 0; i < numTests; i++ {
+		// Create random request
+		req := createRandomRequest(rng)
+
+		// Create a random agent set
+		setSize := rng.Intn(5) + 1
+		agentSet := make(AgentSet, setSize)
+		inSet := false
+
+		for j := 0; j < setSize; j++ {
+			agent := possibleAgents[rng.Intn(len(possibleAgents))]
+			agentSet[agent] = struct{}{}
+			if agent == req.Agent {
+				inSet = true
+			}
+		}
+
+		result := agentSet.Match(req)
+
+		if result != inSet {
+			t.Errorf("Test %d: AgentSet rule mismatch. Request agent: %q, Expected %v, got %v",
+				i, req.Agent, inSet, result)
 		}
 	}
 }

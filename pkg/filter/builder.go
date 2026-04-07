@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/HT4w5/trie"
 	"github.com/docker/go-units"
 	"go4.org/netipx"
 )
@@ -75,8 +76,14 @@ func buildFromMap(m map[string]any) (FilterRule, error) {
 			return buildURL(value)
 		case "URL-PREFIX":
 			return buildURLPrefix(value)
+		case "URL-SUFFIX":
+			return buildURLSuffix(value)
 		case "URL-KEYWORD":
 			return buildURLKeyword(value)
+		case "URL-SET":
+			return buildURLSet(value)
+		case "URL-PREFIX-SET":
+			return buildURLPrefixSet(value)
 
 		// Status rules
 		case "STATUS":
@@ -109,6 +116,8 @@ func buildFromMap(m map[string]any) (FilterRule, error) {
 			return buildAgent(value)
 		case "AGENT-KEYWORD":
 			return buildAgentKeyword(value)
+		case "AGENT-SET":
+			return buildAgentSet(value)
 
 		default:
 			return nil, fmt.Errorf("unknown rule type: %s", key)
@@ -248,12 +257,42 @@ func buildURLPrefix(value any) (FilterRule, error) {
 	return URLPrefix(prefix), nil
 }
 
+func buildURLSuffix(value any) (FilterRule, error) {
+	suffix, ok := value.(string)
+	if !ok {
+		return nil, fmt.Errorf("URL-SUFFIX rule expects a string, got %T", value)
+	}
+	return URLSuffix(suffix), nil
+}
+
 func buildURLKeyword(value any) (FilterRule, error) {
 	keyword, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("URL-KEYWORD rule expects a string, got %T", value)
 	}
 	return URLKeyword(keyword), nil
+}
+
+func buildURLPrefixSet(value any) (FilterRule, error) {
+	prefixes, ok := value.([]string)
+	if !ok {
+		return nil, fmt.Errorf("URL-PREFIX-SET rule expects a []string, got %T", value)
+	}
+	return URLPrefixSet{
+		trie: trie.New(prefixes),
+	}, nil
+}
+
+func buildURLSet(value any) (FilterRule, error) {
+	urls, ok := value.([]string)
+	if !ok {
+		return nil, fmt.Errorf("URL-SET rule expects a []string, got %T", value)
+	}
+	m := make(map[string]struct{}, len(urls))
+	for _, u := range urls {
+		m[u] = struct{}{}
+	}
+	return URLSet(m), nil
 }
 
 func buildStatus(value any) (FilterRule, error) {
@@ -375,6 +414,18 @@ func buildAgentKeyword(value any) (FilterRule, error) {
 		return nil, fmt.Errorf("AGENT-KEYWORD rule expects a string, got %T", value)
 	}
 	return AgentKeyword(keyword), nil
+}
+
+func buildAgentSet(value any) (FilterRule, error) {
+	agents, ok := value.([]string)
+	if !ok {
+		return nil, fmt.Errorf("AGENT-SET rule expects a []string, got %T", value)
+	}
+	m := make(map[string]struct{}, len(agents))
+	for _, u := range agents {
+		m[u] = struct{}{}
+	}
+	return AgentSet(m), nil
 }
 
 // Helper functions
