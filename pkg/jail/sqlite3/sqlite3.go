@@ -40,17 +40,17 @@ type SQLite3Jail struct {
 	del            *sql.Stmt
 	list           *sql.Stmt
 	compile        *sql.Stmt
-	addSelect      *sql.Stmt // SELECT statement for checking existing records in Add()
-	addInsert      *sql.Stmt // INSERT statement for adding new records in Add()
-	addUpdate      *sql.Stmt // UPDATE statement for updating existing records in Add()
+	addSelect      *sql.Stmt
+	addInsert      *sql.Stmt
+	addUpdate      *sql.Stmt
 	logger         *slog.Logger
 	dataSourceName string
 	banDstPorts    []uint16 // TODO?: add this to dto.BanRecord and decide on analyzer layer
 	pruneInterval  time.Duration
 	shutdownMu     sync.RWMutex // Lock at shutdown
-	isShutdown     bool
 	ipv4PrefixLen  int
 	ipv6PrefixLen  int
+	isShutdown     bool
 }
 
 func New(opts ...func(*SQLite3Jail)) *SQLite3Jail {
