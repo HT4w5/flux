@@ -274,23 +274,38 @@ func buildURLKeyword(value any) (FilterRule, error) {
 }
 
 func buildURLPrefixSet(value any) (FilterRule, error) {
-	prefixes, ok := value.([]string)
+	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("URL-PREFIX-SET rule expects a []string, got %T", value)
+		return nil, fmt.Errorf("expected an array, got %T", value)
 	}
+
+	prefixes := make([]string, len(rawSlice))
+	for i, v := range rawSlice {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+		}
+		prefixes[i] = str
+	}
+
 	return URLPrefixSet{
 		trie: trie.New(prefixes),
 	}, nil
 }
 
 func buildURLSet(value any) (FilterRule, error) {
-	urls, ok := value.([]string)
+	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("URL-SET rule expects a []string, got %T", value)
+		return nil, fmt.Errorf("expected an array, got %T", value)
 	}
-	m := make(map[string]struct{}, len(urls))
-	for _, u := range urls {
-		m[u] = struct{}{}
+
+	m := make(map[string]struct{}, len(rawSlice))
+	for i, v := range rawSlice {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+		}
+		m[str] = struct{}{}
 	}
 	return URLSet(m), nil
 }
@@ -417,13 +432,18 @@ func buildAgentKeyword(value any) (FilterRule, error) {
 }
 
 func buildAgentSet(value any) (FilterRule, error) {
-	agents, ok := value.([]string)
+	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("AGENT-SET rule expects a []string, got %T", value)
+		return nil, fmt.Errorf("expected an array, got %T", value)
 	}
-	m := make(map[string]struct{}, len(agents))
-	for _, u := range agents {
-		m[u] = struct{}{}
+
+	m := make(map[string]struct{}, len(rawSlice))
+	for i, v := range rawSlice {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+		}
+		m[str] = struct{}{}
 	}
 	return AgentSet(m), nil
 }
