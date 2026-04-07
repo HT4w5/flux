@@ -4,7 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
-	"strconv"
+	"net/netip"
 	"time"
 
 	"github.com/HT4w5/flux/pkg/analyzer"
@@ -138,7 +138,16 @@ func (s *APIServer) handlePOSTBanRecord(c *gin.Context) {
 }
 
 func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
-	id, err := strconv.ParseInt(c.Query("id"), 10, 64)
+	addrStr := c.Query("addr")
+	if addrStr == "" {
+		c.JSON(http.StatusBadRequest, msgResp{
+			Code: http.StatusBadRequest,
+			Msg:  "addr parameter is required",
+		})
+		return
+	}
+
+	addr, err := netip.ParseAddr(addrStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, msgResp{
 			Code: http.StatusBadRequest,
@@ -147,7 +156,7 @@ func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
 		return
 	}
 
-	if err := s.jail.Del(c.Request.Context(), id); err != nil {
+	if err := s.jail.Del(c.Request.Context(), addr); err != nil {
 		c.JSON(http.StatusInternalServerError, msgResp{
 			Code: http.StatusInternalServerError,
 			Msg:  err.Error(),

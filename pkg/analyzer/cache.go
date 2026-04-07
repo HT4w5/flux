@@ -61,14 +61,8 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 	// Check for overflow
 	if int(bkt.RequestCount) > a.config.RequestVolume {
 		a.logger.Debug("request count bucket overflow", "client", request.Client.String(), "count", bkt.RequestCount)
-		var prefixLen int
-		if request.Client.Is4() {
-			prefixLen = a.config.IPv4BanPrefixLen
-		} else {
-			prefixLen = a.config.IPv6BanPrefixLen
-		}
 		err := a.jail.Add(ctx, &dto.BanRecord{
-			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
+			Addr:      request.Client,
 			Blame:     requestBucketOverflowBlame + strconv.FormatInt(int64(bkt.RequestCount), 10),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.RequestBanDuration),
 		})
@@ -82,14 +76,8 @@ func (a *Analyzer) updateClientBucket(ctx context.Context, request *dto.Request)
 
 	if bkt.ByteCount > a.config.ByteVolume {
 		a.logger.Debug("byte count bucket overflow", "client", request.Client.String(), "count", bkt.ByteCount)
-		var prefixLen int
-		if request.Client.Is4() {
-			prefixLen = a.config.IPv4BanPrefixLen
-		} else {
-			prefixLen = a.config.IPv6BanPrefixLen
-		}
 		err := a.jail.Add(ctx, &dto.BanRecord{
-			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
+			Addr:      request.Client,
 			Blame:     byteBucketOverflowBlame + units.HumanSize(float64(bkt.ByteCount)),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.ByteBanDuration),
 		})
@@ -147,14 +135,8 @@ func (a *Analyzer) updateClientPathBucket(ctx context.Context, request *dto.Requ
 	// Check for overflow
 	if bkt.Sent > int64(a.config.FileRatioVolume*float64(size)) {
 		a.logger.Debug("file ratio bucket overflow", "client", request.Client.String(), "path", request.URL, "sent", bkt.Sent)
-		var prefixLen int
-		if request.Client.Is4() {
-			prefixLen = a.config.IPv4BanPrefixLen
-		} else {
-			prefixLen = a.config.IPv6BanPrefixLen
-		}
 		err := a.jail.Add(ctx, &dto.BanRecord{
-			Prefix:    netip.PrefixFrom(request.Client, prefixLen),
+			Addr:      request.Client,
 			Blame:     fileBucketOverflowBlame + request.URL + ": " + strconv.FormatFloat(float64(bkt.Sent)/float64(size), 'g', 3, 64),
 			ExpiresAt: bkt.LastUpdate.Add(a.config.FileRatioBanDuration),
 		})

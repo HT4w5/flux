@@ -39,10 +39,6 @@ type Config struct {
 	FileRatioVolume      float64
 	FileRatioBanDuration time.Duration
 
-	// IP ban prefix lengths
-	IPv4BanPrefixLen int
-	IPv6BanPrefixLen int
-
 	// Performance settings
 	NumWorkers int
 	MaxBytes   int64
@@ -78,8 +74,6 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 			FileRatioLeak:        5,   // 5/1e5 files per second
 			FileRatioVolume:      5e5, // 5 files
 			FileRatioBanDuration: 7 * 24 * time.Hour,
-			IPv4BanPrefixLen:     24,
-			IPv6BanPrefixLen:     48,
 			NumWorkers:           8,
 			MaxBytes:             2 * units.GB,
 			FilterMode:           Blacklist,

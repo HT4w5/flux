@@ -41,8 +41,10 @@ type IndexConfig struct {
 }
 
 type JailConfig struct {
-	Method  string            `mapstructure:"method"`
-	SQLite3 SQLite3JailConfig `mapstructure:"sqlite3"`
+	Method              string            `mapstructure:"method"`
+	SQLite3             SQLite3JailConfig `mapstructure:"sqlite3"`
+	IPv4BanPrefixLength int               `mapstructure:"ipv4_ban_prefix_length"`
+	IPv6BanPrefixLength int               `mapstructure:"ipv6_ban_prefix_length"`
 }
 
 type SQLite3JailConfig struct {
@@ -65,8 +67,6 @@ type AnalyzerConfig struct {
 	FileRatioLeak          float64       `mapstructure:"file_ratio_leak"`
 	FileRatioVolume        float64       `mapstructure:"file_ratio_volume"`
 	FileRatioBanDuration   time.Duration `mapstructure:"file_ratio_ban_duration"`
-	IPv4BanPrefixLen       int           `mapstructure:"ipv4_ban_prefix_length"`
-	IPv6BanPrefixLen       int           `mapstructure:"ipv6_ban_prefix_length"`
 	NumWorkers             int           `mapstructure:"num_workers"`
 	MaxBytes               int64         `mapstructure:"max_bytes"`
 }
@@ -132,7 +132,9 @@ func DefaultServerConfig() *ServerConfig {
 			Routes:   make(map[string]string),
 		},
 		Jail: JailConfig{
-			Method: "sqlite3",
+			Method:              "sqlite3",
+			IPv4BanPrefixLength: 24,
+			IPv6BanPrefixLength: 48,
 			SQLite3: SQLite3JailConfig{
 				DataSource:    "jail.db",
 				PruneInterval: time.Hour,
@@ -149,8 +151,6 @@ func DefaultServerConfig() *ServerConfig {
 			FileRatioLeak:        5,
 			FileRatioVolume:      5e5,
 			FileRatioBanDuration: 7 * 24 * time.Hour,
-			IPv4BanPrefixLen:     24,
-			IPv6BanPrefixLen:     48,
 			NumWorkers:           8,
 			MaxBytes:             2 * units.GiB,
 			IngressFilterMode:    "blacklist",

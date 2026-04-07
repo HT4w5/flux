@@ -215,8 +215,6 @@ func entryPoint() bool {
 		FileRatioLeak:        cfg.Analyzer.FileRatioLeak,
 		FileRatioVolume:      cfg.Analyzer.FileRatioVolume,
 		FileRatioBanDuration: cfg.Analyzer.FileRatioBanDuration,
-		IPv4BanPrefixLen:     cfg.Analyzer.IPv4BanPrefixLen,
-		IPv6BanPrefixLen:     cfg.Analyzer.IPv6BanPrefixLen,
 		NumWorkers:           cfg.Analyzer.NumWorkers,
 		MaxBytes:             cfg.Analyzer.MaxBytes,
 		FilterMode:           filterMode,

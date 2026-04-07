@@ -21,11 +21,10 @@ const (
 const (
 	tableQuery1 = `CREATE TABLE
     IF NOT EXISTS jail (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        prefix TEXT NOT NULL,
+        addr TEXT PRIMARY KEY,
         blame TEXT NOT NULL,
         expires_at DATETIME NOT NULL
-    );`
+    ) WITHOUT ROWID;`
 	tableQuery2 = `CREATE INDEX IF NOT EXISTS idx_jail_expires_at ON jail (expires_at);`
 )
 
@@ -38,16 +37,20 @@ type SQLite3Jail struct {
 	db             *sql.DB
 	cancelWorker   context.CancelFunc
 	prune          *sql.Stmt
-	add            *sql.Stmt
 	del            *sql.Stmt
 	list           *sql.Stmt
 	compile        *sql.Stmt
+	addSelect      *sql.Stmt // SELECT statement for checking existing records in Add()
+	addInsert      *sql.Stmt // INSERT statement for adding new records in Add()
+	addUpdate      *sql.Stmt // UPDATE statement for updating existing records in Add()
 	logger         *slog.Logger
 	dataSourceName string
 	banDstPorts    []uint16 // TODO?: add this to dto.BanRecord and decide on analyzer layer
 	pruneInterval  time.Duration
 	shutdownMu     sync.RWMutex // Lock at shutdown
 	isShutdown     bool
+	ipv4PrefixLen  int
+	ipv6PrefixLen  int
 }
 
 func New(opts ...func(*SQLite3Jail)) *SQLite3Jail {
@@ -98,6 +101,20 @@ func WithBanDstPorts(ports []uint16) func(*SQLite3Jail) {
 	}
 }
 
+// WithIPv4BanPrefixLength sets the prefix length for IPv4 addresses when compiling ban rules.
+func WithIPv4BanPrefixLength(prefixLen int) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
+		j.ipv4PrefixLen = prefixLen
+	}
+}
+
+// WithIPv6BanPrefixLength sets the prefix length for IPv6 addresses when compiling ban rules.
+func WithIPv6BanPrefixLength(prefixLen int) func(*SQLite3Jail) {
+	return func(j *SQLite3Jail) {
+		j.ipv6PrefixLen = prefixLen
+	}
+}
+
 func (j *SQLite3Jail) Init(ctx context.Context) error {
 	j.logger.Info("starting sqlite3 jail")
 	var err error
@@ -121,23 +138,32 @@ func (j *SQLite3Jail) Init(ctx context.Context) error {
 	}
 
 	// Init statements
-	j.add, err = j.db.PrepareContext(ctx, `INSERT INTO jail (prefix, blame, expires_at) VALUES (?, ?, ?)`)
+	j.del, err = j.db.PrepareContext(ctx, `DELETE FROM jail WHERE addr = ?`)
 	if err != nil {
 		goto FailureClose
 	}
-	j.del, err = j.db.PrepareContext(ctx, `DELETE FROM jail WHERE id = ?`)
+	j.list, err = j.db.PrepareContext(ctx, `SELECT addr, blame, expires_at FROM jail WHERE expires_at > ?`)
 	if err != nil {
 		goto FailureClose
 	}
-	j.list, err = j.db.PrepareContext(ctx, `SELECT id, prefix, blame, expires_at FROM jail WHERE expires_at > ?`)
-	if err != nil {
-		goto FailureClose
-	}
-	j.compile, err = j.db.PrepareContext(ctx, `SELECT prefix FROM jail WHERE expires_at > ?`)
+	j.compile, err = j.db.PrepareContext(ctx, `SELECT addr FROM jail WHERE expires_at > ?`)
 	if err != nil {
 		goto FailureClose
 	}
 	j.prune, err = j.db.PrepareContext(ctx, `DELETE FROM jail WHERE expires_at <= ?`)
+	if err != nil {
+		goto FailureClose
+	}
+	// Prepare statements for Add() transaction
+	j.addSelect, err = j.db.PrepareContext(ctx, `SELECT expires_at FROM jail WHERE addr = ?`)
+	if err != nil {
+		goto FailureClose
+	}
+	j.addInsert, err = j.db.PrepareContext(ctx, `INSERT INTO jail (addr, blame, expires_at) VALUES (?, ?, ?)`)
+	if err != nil {
+		goto FailureClose
+	}
+	j.addUpdate, err = j.db.PrepareContext(ctx, `UPDATE jail SET blame = ?, expires_at = ? WHERE addr = ?`)
 	if err != nil {
 		goto FailureClose
 	}
@@ -166,11 +192,8 @@ func (j *SQLite3Jail) Close() error {
 
 	// Close statements
 	var err error
-	if j.add != nil {
-		err = j.add.Close()
-	}
 	if j.del != nil {
-		err = errors.Join(err, j.del.Close())
+		err = j.del.Close()
 	}
 	if j.list != nil {
 		err = errors.Join(err, j.list.Close())
@@ -180,6 +203,15 @@ func (j *SQLite3Jail) Close() error {
 	}
 	if j.prune != nil {
 		err = errors.Join(err, j.prune.Close())
+	}
+	if j.addSelect != nil {
+		err = errors.Join(err, j.addSelect.Close())
+	}
+	if j.addInsert != nil {
+		err = errors.Join(err, j.addInsert.Close())
+	}
+	if j.addUpdate != nil {
+		err = errors.Join(err, j.addUpdate.Close())
 	}
 	if j.db != nil {
 		err = errors.Join(err, j.db.Close())
@@ -196,17 +228,48 @@ func (j *SQLite3Jail) Add(ctx context.Context, b *dto.BanRecord) error {
 	if j.isShutdown {
 		return ErrShutdown
 	}
-	_, err := j.add.ExecContext(ctx, b.Prefix.String(), b.Blame, b.ExpiresAt)
-	return err
+
+	tx, err := j.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Create transaction-specific statements from prepared statements
+	selectStmt := tx.StmtContext(ctx, j.addSelect)
+	insertStmt := tx.StmtContext(ctx, j.addInsert)
+	updateStmt := tx.StmtContext(ctx, j.addUpdate)
+
+	// Check if record exists
+	var existingExpiresAt time.Time
+	err = selectStmt.QueryRowContext(ctx, b.Addr.String()).Scan(&existingExpiresAt)
+
+	if err == sql.ErrNoRows {
+		// No existing record, insert new
+		_, err = insertStmt.ExecContext(ctx, b.Addr.String(), b.Blame, b.ExpiresAt)
+	} else if err != nil {
+		return err
+	} else {
+		// Record exists, only replace if longer
+		if b.ExpiresAt.After(existingExpiresAt) {
+			_, err = updateStmt.ExecContext(ctx, b.Blame, b.ExpiresAt, b.Addr.String())
+		}
+	}
+
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
-func (j *SQLite3Jail) Del(ctx context.Context, id int64) error {
+func (j *SQLite3Jail) Del(ctx context.Context, addr netip.Addr) error {
 	j.shutdownMu.RLock()
 	defer j.shutdownMu.RUnlock()
 	if j.isShutdown {
 		return ErrShutdown
 	}
-	_, err := j.del.ExecContext(ctx, id)
+	_, err := j.del.ExecContext(ctx, addr.String())
 	return err
 }
 
@@ -226,15 +289,15 @@ func (j *SQLite3Jail) List(ctx context.Context) ([]dto.BanRecord, error) {
 	bans := make([]dto.BanRecord, 0)
 	for rows.Next() {
 		var b dto.BanRecord
-		var prefixStr string
-		if err := rows.Scan(&b.ID, &prefixStr, &b.Blame, &b.ExpiresAt); err != nil {
+		var addrStr string
+		if err := rows.Scan(&addrStr, &b.Blame, &b.ExpiresAt); err != nil {
 			return nil, err
 		}
 
-		if p, err := netip.ParsePrefix(prefixStr); err == nil {
-			b.Prefix = p
+		if addr, err := netip.ParseAddr(addrStr); err == nil {
+			b.Addr = addr
 		} else {
-			j.logger.Warn("failed to parse ban prefix", "error", err, "prefix", prefixStr)
+			j.logger.Warn("failed to parse ban addr", "error", err, "addr", addrStr)
 			continue
 		}
 		bans = append(bans, b)
@@ -258,16 +321,37 @@ func (j *SQLite3Jail) Compile(ctx context.Context) ([]dto.BanRule, error) {
 	var ipsb netipx.IPSetBuilder
 
 	for rows.Next() {
-		var prefixStr string
-		if err := rows.Scan(&prefixStr); err != nil {
+		var addrStr string
+		if err := rows.Scan(&addrStr); err != nil {
 			return nil, err
 		}
 
-		if p, err := netip.ParsePrefix(prefixStr); err == nil {
-			ipsb.AddPrefix(p)
-		} else {
-			j.logger.Warn("failed to parse ban prefix", "error", err, "prefix", prefixStr)
+		addr, err := netip.ParseAddr(addrStr)
+		if err != nil {
+			j.logger.Warn("failed to parse ban addr", "error", err, "addr", addrStr)
 			continue
+		}
+
+		// Convert address to prefix using configured prefix length
+		var prefix netip.Prefix
+		if addr.Is4() {
+			prefixLen := j.ipv4PrefixLen
+			if prefixLen <= 0 {
+				prefixLen = 24
+			}
+			prefix = netip.PrefixFrom(addr, prefixLen)
+		} else {
+			prefixLen := j.ipv6PrefixLen
+			if prefixLen <= 0 {
+				prefixLen = 48
+			}
+			prefix = netip.PrefixFrom(addr, prefixLen)
+		}
+
+		if prefix.IsValid() {
+			ipsb.AddPrefix(prefix)
+		} else {
+			j.logger.Warn("failed to create prefix from addr", "addr", addrStr)
 		}
 	}
 
