@@ -42,16 +42,16 @@ func (d *NFTablesDriver) Install(rules []dto.BanRule) error {
 		return err
 	}
 
-	conn.DelTable(&nftables.Table{
-		Name: tableName,
-	})
+	table := &nftables.Table{
+		Family: nftables.TableFamilyINet,
+		Name:   tableName,
+	}
+
+	conn.DelTable(table)
 
 	conn.Flush()
 
-	table := conn.AddTable(&nftables.Table{
-		Family: nftables.TableFamilyINet,
-		Name:   tableName,
-	})
+	table = conn.AddTable(table)
 
 	chain := conn.AddChain(&nftables.Chain{
 		Name:     chainName,
@@ -88,7 +88,7 @@ func (d *NFTablesDriver) Install(rules []dto.BanRule) error {
 			elemsV4 = append(
 				elemsV4,
 				nftables.SetElement{Key: r.From().AsSlice()},
-				nftables.SetElement{Key: r.To().AsSlice(), IntervalEnd: true},
+				nftables.SetElement{Key: r.To().Next().AsSlice(), IntervalEnd: true},
 			)
 		}
 
@@ -97,7 +97,7 @@ func (d *NFTablesDriver) Install(rules []dto.BanRule) error {
 			elemsV6 = append(
 				elemsV6,
 				nftables.SetElement{Key: r.From().AsSlice()},
-				nftables.SetElement{Key: r.To().AsSlice(), IntervalEnd: true},
+				nftables.SetElement{Key: r.To().Next().AsSlice(), IntervalEnd: true},
 			)
 		}
 

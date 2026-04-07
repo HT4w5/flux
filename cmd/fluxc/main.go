@@ -51,8 +51,6 @@ func main() {
 
 	logger := setupLogger(cfg.LogLevel)
 
-	logger.Info("using config", "config", cfg)
-
 	var err error
 	cfg.UpdateInterval, err = time.ParseDuration(uiStr)
 	if err != nil {
@@ -62,6 +60,8 @@ func main() {
 		cfg.UpdateInterval = time.Minute
 		logger.Warn("update interval too short; using 1m")
 	}
+
+	logger.Info("using config", "config", cfg)
 
 	var fw fw.FirewallDriver
 	switch cfg.FirewallDriver {
