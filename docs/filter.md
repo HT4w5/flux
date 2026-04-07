@@ -96,6 +96,30 @@ filter:
   URL-KEYWORD: "bar"
 ```
 
+### URL-SUFFIX
+```yaml
+filter:
+  URL-SUFFIX: ".tar.gz"
+```
+
+### URL-SET
+```yaml
+filter:
+  URL-SET:
+    - "/api/v1/users"
+    - "/api/v1/posts"
+    - "/static/css/style.css"
+```
+
+### URL-PREFIX-SET
+```yaml
+filter:
+  URL-PREFIX-SET:
+    - "/api"
+    - "/static"
+    - "/images"
+```
+
 ## Status rules
 
 ### STATUS
@@ -187,3 +211,13 @@ filter:
 filter:
   AGENT-KEYWORD: "Chrome"
 ```
+
+### AGENT-SET
+```yaml
+filter:
+  AGENT-SET:
+    - "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    - "curl/7.88.1"
+    - "PostmanRuntime/7.36.3"
+```
+
