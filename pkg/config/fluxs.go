@@ -30,8 +30,9 @@ type LogSourceConfig struct {
 }
 
 type SyslogSourceConfig struct {
-	Network string `mapstructure:"network"`
-	Addr    string `mapstructure:"addr"`
+	Network    string `mapstructure:"network"`
+	Addr       string `mapstructure:"addr"`
+	NumWorkers int    `mapstructure:"num_workers"`
 }
 
 type IndexConfig struct {
@@ -122,8 +123,9 @@ func DefaultServerConfig() *ServerConfig {
 			Method: "syslog",
 			Parser: "nginx",
 			Syslog: SyslogSourceConfig{
-				Network: "udp",
-				Addr:    "0.0.0.0:1514",
+				Network:    "udp",
+				Addr:       "0.0.0.0:1514",
+				NumWorkers: 8,
 			},
 		},
 		Index: IndexConfig{

@@ -9,7 +9,7 @@ import (
 
 // Jail stores ban entries and populate them to the output
 type Jail interface {
-	Init(ctx context.Context) error
+	Start() error
 	Close() error
 	Add(ctx context.Context, b *dto.BanRecord) error
 	Del(ctx context.Context, addr netip.Addr) error

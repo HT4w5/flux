@@ -3,6 +3,7 @@ package analyzer
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/HT4w5/cache"
@@ -10,7 +11,6 @@ import (
 	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
-	"github.com/HT4w5/flux/pkg/logsrc"
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
 )
@@ -51,13 +51,14 @@ type Analyzer struct {
 	ingressFilter          filter.FilterRule
 	clientBucketFilter     filter.FilterRule
 	clientPathBucketFilter filter.FilterRule
-	src                    logsrc.LogSource
 	jail                   jail.Jail
+	workerStop             context.CancelFunc
+	workerWg               sync.WaitGroup
 	bucketCache            *cache.Cache
 	keyBufferPool          *pool.BytePool
 	index                  *index.FileSizeIndex
 	logger                 *slog.Logger
-	requestChan            chan dto.Request
+	requestChan            <-chan dto.Request
 	config                 Config
 }
 
@@ -90,23 +91,29 @@ func New(opts ...func(*Analyzer)) *Analyzer {
 		opt(a)
 	}
 
+	// Create cache
 	a.bucketCache = cache.New(cache.WithSize(uint64(a.config.MaxBytes)))
-	a.requestChan = make(chan dto.Request)
 
 	return a
 }
 
-func (a *Analyzer) Start(ctx context.Context) {
-	// Start log source
-	a.src.Start(ctx, a.requestChan)
-
+func (a *Analyzer) Start() {
 	// Start workers
+	ctx, stop := context.WithCancel(context.Background())
+	a.workerStop = stop
 	for i := range a.config.NumWorkers {
-		go a.worker(i, ctx)
+		a.workerWg.Go(func() { a.worker(ctx, i) })
 	}
 }
 
-func (a *Analyzer) worker(id int, ctx context.Context) {
+func (a *Analyzer) Shutdown() {
+	a.logger.Info("analyzer shutdown")
+	a.workerStop()
+	a.workerWg.Wait()
+	a.bucketCache.Reset()
+}
+
+func (a *Analyzer) worker(ctx context.Context, id int) {
 	a.logger.Info("worker started", "id", id)
 	for {
 		select {
@@ -133,10 +140,11 @@ func (a *Analyzer) worker(id int, ctx context.Context) {
 }
 
 // Options
-// WithLogSource sets the log source for Analyzer.
-func WithLogSource(src logsrc.LogSource) func(*Analyzer) {
+
+// WithRequestChan sets the ingress request channel for Analyzer.
+func WithRequestChan(requestChan <-chan dto.Request) func(*Analyzer) {
 	return func(a *Analyzer) {
-		a.src = src
+		a.requestChan = requestChan
 	}
 }
 
@@ -154,7 +162,7 @@ func WithLogger(logger *slog.Logger) func(*Analyzer) {
 	}
 }
 
-// WithConfig sets the entire configuration for Analyzer.
+// WithConfig sets configuration for Analyzer.
 func WithConfig(config Config) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.config = config
@@ -168,21 +176,21 @@ func WithJail(j jail.Jail) func(*Analyzer) {
 	}
 }
 
-// WithIngressFilter sets the log filter for Analyzer.
+// WithIngressFilter sets the ingress request filter for Analyzer.
 func WithIngressFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.ingressFilter = f
 	}
 }
 
-// WithIngressFilter sets the log filter for Analyzer.
+// WithClientBucketFilter sets the client bucket request filter for Analyzer.
 func WithClientBucketFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.clientBucketFilter = f
 	}
 }
 
-// WithIngressFilter sets the log filter for Analyzer.
+// WithClientPathBucketFilter sets the client-path bucket request filter for Analyzer.
 func WithClientPathBucketFilter(f filter.FilterRule) func(*Analyzer) {
 	return func(a *Analyzer) {
 		a.clientPathBucketFilter = f

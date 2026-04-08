@@ -115,7 +115,8 @@ func WithIPv6BanPrefixLength(prefixLen int) func(*SQLite3Jail) {
 	}
 }
 
-func (j *SQLite3Jail) Init(ctx context.Context) error {
+func (j *SQLite3Jail) Start() error {
+	ctx := context.TODO()
 	j.logger.Info("starting sqlite3 jail")
 	var err error
 	j.db, err = sql.Open("sqlite3", j.dataSourceName+"?_journal_mode=WAL&_busy_timeout=5000&parseTime=true")

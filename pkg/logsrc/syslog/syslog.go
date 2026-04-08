@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/parser"
@@ -59,14 +60,32 @@ func WithParser(parser parser.Parser) func(*SyslogSource) {
 	}
 }
 
+// WithRequestChan sets the egress request channel.
+func WithRequestChan(requestChan chan<- dto.Request) func(*SyslogSource) {
+	return func(s *SyslogSource) {
+		s.requestChan = requestChan
+	}
+}
+
+// WithNumWorkers sets the number of workers.
+func WithNumWorkers(n int) func(*SyslogSource) {
+	return func(s *SyslogSource) {
+		s.numWorkers = n
+	}
+}
+
 // Receive logs via a syslog server
 type SyslogSource struct {
 	parser       parser.Parser
 	srv          *syslog.Server
 	logPartsChan syslog.LogPartsChannel
 	logger       *slog.Logger
+	requestChan  chan<- dto.Request
+	workerStop   context.CancelFunc
 	addr         string
+	workerWg     sync.WaitGroup
 	network      Network
+	numWorkers   int
 }
 
 func New(opts ...func(*SyslogSource)) *SyslogSource {
@@ -90,13 +109,7 @@ func New(opts ...func(*SyslogSource)) *SyslogSource {
 	return s
 }
 
-func (s *SyslogSource) Start(ctx context.Context, output chan<- dto.Request) {
-	go func() {
-		s.run(ctx, output)
-	}()
-}
-
-func (s *SyslogSource) run(ctx context.Context, output chan<- dto.Request) {
+func (s *SyslogSource) Start() {
 	// Start syslog server
 	var err error
 	switch s.network {
@@ -119,13 +132,29 @@ func (s *SyslogSource) run(ctx context.Context, output chan<- dto.Request) {
 
 	s.logger.Info("syslog server started", "network", s.network.Name(), "addr", s.addr)
 
+	ctx, stop := context.WithCancel(context.Background())
+	s.workerStop = stop
+
+	for i := range s.numWorkers {
+		s.workerWg.Go(func() { s.worker(ctx, i) })
+	}
+}
+
+func (s *SyslogSource) Shutdown() {
+	s.workerStop()
+	s.workerWg.Wait()
+
+	if err := s.srv.Kill(); err != nil {
+		s.logger.Error("failed to stop syslog server", "error", err)
+	}
+}
+
+func (s *SyslogSource) worker(ctx context.Context, id int) {
+	s.logger.Info("worker start", "id", id)
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("syslog server shutdown")
-			if err := s.srv.Kill(); err != nil {
-				s.logger.Error("failed to stop syslog server", "error", err)
-			}
+			s.logger.Info("worker shutdown", "id", id)
 			return
 		case logPart := <-s.logPartsChan:
 			if logPart == nil {
@@ -146,7 +175,7 @@ func (s *SyslogSource) run(ctx context.Context, output chan<- dto.Request) {
 				s.logger.Warn("failed to parse line", "line", fmt.Sprintf("%.10s", line))
 				continue
 			}
-			output <- req
+			s.requestChan <- req
 		}
 	}
 }

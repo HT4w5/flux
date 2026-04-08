@@ -12,6 +12,7 @@ import (
 	"github.com/HT4w5/flux/pkg/analyzer"
 	"github.com/HT4w5/flux/pkg/api"
 	"github.com/HT4w5/flux/pkg/config"
+	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
@@ -98,33 +99,6 @@ func entryPoint() bool {
 		return false
 	}
 
-	// Create log source
-	var logSource logsrc.LogSource
-	switch cfg.LogSource.Method {
-	case "syslog":
-		var network syslog.Network
-		switch cfg.LogSource.Syslog.Network {
-		case "tcp":
-			network = syslog.TCP
-		case "udp":
-			network = syslog.UDP
-		case "unixgram":
-			network = syslog.Unixgram
-		default:
-			logger.Error("unknown syslog network", "network", cfg.LogSource.Syslog.Network)
-			return false
-		}
-
-		logSource = syslog.New(
-			syslog.WithNetworkAddr(network, cfg.LogSource.Syslog.Addr),
-			syslog.WithLogger(logger),
-			syslog.WithParser(p),
-		)
-	default:
-		logger.Error("unknown log source method", "method", cfg.LogSource.Method)
-		return false
-	}
-
 	// Create file size index
 	fileSizeIndexOpts := []func(*index.FileSizeIndex){
 		index.WithTTL(cfg.Index.TTL),
@@ -142,18 +116,12 @@ func entryPoint() bool {
 	var jailInstance jail.Jail
 	switch cfg.Jail.Method {
 	case "sqlite3":
-		j := sqlite3.New(
+		jailInstance = sqlite3.New(
 			sqlite3.WithDataSourceName(cfg.Jail.SQLite3.DataSource),
 			sqlite3.WithPruneInterval(cfg.Jail.SQLite3.PruneInterval),
 			sqlite3.WithBanDstPorts(cfg.Jail.SQLite3.BanDstPorts),
 			sqlite3.WithLogger(logger),
 		)
-		if err := j.Init(ctx); err != nil {
-			logger.Error("failed to initialize jail", "error", err)
-			return false
-		}
-		jailInstance = j
-		defer jailInstance.Close()
 	default:
 		logger.Error("unknown jail method", "method", cfg.Jail.Method)
 		return false
@@ -204,7 +172,47 @@ func entryPoint() bool {
 		return false
 	}
 
+	// Create log source
+	requestChan := make(chan dto.Request)
+	defer close(requestChan)
+
+	var logSource logsrc.LogSource
+	switch cfg.LogSource.Method {
+	case "syslog":
+		if cfg.LogSource.Syslog.NumWorkers < 1 {
+			cfg.LogSource.Syslog.NumWorkers = 1
+		}
+
+		var network syslog.Network
+		switch cfg.LogSource.Syslog.Network {
+		case "tcp":
+			network = syslog.TCP
+		case "udp":
+			network = syslog.UDP
+		case "unixgram":
+			network = syslog.Unixgram
+		default:
+			logger.Error("unknown syslog network", "network", cfg.LogSource.Syslog.Network)
+			return false
+		}
+
+		logSource = syslog.New(
+			syslog.WithNumWorkers(cfg.LogSource.Syslog.NumWorkers),
+			syslog.WithRequestChan(requestChan),
+			syslog.WithNetworkAddr(network, cfg.LogSource.Syslog.Addr),
+			syslog.WithLogger(logger),
+			syslog.WithParser(p),
+		)
+	default:
+		logger.Error("unknown log source method", "method", cfg.LogSource.Method)
+		return false
+	}
+
 	// Create analyzer
+	if cfg.Analyzer.NumWorkers < 1 {
+		cfg.Analyzer.NumWorkers = 1
+	}
+
 	analyzerConfig := analyzer.Config{
 		RequestLeak:          cfg.Analyzer.RequestLeak,
 		RequestVolume:        cfg.Analyzer.RequestVolume,
@@ -221,7 +229,7 @@ func entryPoint() bool {
 	}
 
 	analyzer := analyzer.New(
-		analyzer.WithLogSource(logSource),
+		analyzer.WithRequestChan(requestChan),
 		analyzer.WithIndex(fileSizeIndex),
 		analyzer.WithJail(jailInstance),
 		analyzer.WithLogger(logger),
@@ -239,7 +247,18 @@ func entryPoint() bool {
 		api.WithListenAddr(cfg.API.ListenAddr),
 	)
 
-	analyzer.Start(ctx)
+	if err := jailInstance.Start(); err != nil {
+		logger.Error("failed to start jail", "error", err)
+		return false
+	}
+	defer jailInstance.Close()
+
+	analyzer.Start()
+	defer analyzer.Shutdown()
+
+	logSource.Start()
+	defer logSource.Shutdown()
+
 	apiServer.Start()
 	defer apiServer.Shutdown()
 
