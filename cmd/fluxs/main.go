@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,6 +25,7 @@ import (
 	"github.com/HT4w5/flux/pkg/parser/nginx"
 	"github.com/SladkyCitron/slogcolor"
 	"github.com/gin-gonic/gin"
+	sloggin "github.com/samber/slog-gin"
 	"github.com/spf13/pflag"
 )
 
@@ -239,13 +241,24 @@ func entryPoint() bool {
 		analyzer.WithClientPathBucketFilter(cpbf),
 	)
 
-	apiServer := api.New(
+	apiHandler := api.New(
 		api.WithAnalyzer(analyzer),
 		api.WithIndex(fileSizeIndex),
 		api.WithJail(jailInstance),
 		api.WithLogger(logger),
-		api.WithListenAddr(cfg.API.ListenAddr),
 	)
+
+	router := gin.New()
+	router.Use(sloggin.NewWithConfig(logger, sloggin.Config{
+		DefaultLevel:     slog.LevelInfo,
+		ClientErrorLevel: slog.LevelWarn,
+		ServerErrorLevel: slog.LevelError,
+		HandleGinDebug:   true,
+	}))
+	router.Use(gin.Recovery())
+
+	apiGrp := router.Group("/api")
+	apiHandler.RegisterRoutes(router, apiGrp)
 
 	if err := jailInstance.Start(); err != nil {
 		logger.Error("failed to start jail", "error", err)
@@ -259,11 +272,31 @@ func entryPoint() bool {
 	logSource.Start()
 	defer logSource.Shutdown()
 
-	apiServer.Start()
-	defer apiServer.Shutdown()
+	// Start http server
+	httpServer := &http.Server{
+		Addr:              cfg.Web.ListenAddr,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 
-	<-ctx.Done()
+	httpCtx, stopHTTP := context.WithCancel(ctx)
+	defer stopHTTP()
+
+	logger.Info("web server listening", "listen_addr", cfg.Web.ListenAddr)
+	go func() {
+		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed && err != nil {
+			logger.Error("listen failed", "error", err)
+			stopHTTP()
+		}
+	}()
+
+	<-httpCtx.Done()
 	logger.Info("shutting down")
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdown()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Warn("shutdown failure", "error", err)
+	}
 
 	return true
 }

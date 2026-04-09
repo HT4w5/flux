@@ -13,7 +13,7 @@ import (
 type ServerConfig struct {
 	LogSource LogSourceConfig `mapstructure:"log_source"`
 	Log       LogConfig       `mapstructure:"log"`
-	API       APIConfig       `mapstructure:"api"`
+	Web       WebConfig       `mapstructure:"web"`
 	Index     IndexConfig     `mapstructure:"index"`
 	Jail      JailConfig      `mapstructure:"jail"`
 	Analyzer  AnalyzerConfig  `mapstructure:"analyzer"`
@@ -72,7 +72,7 @@ type AnalyzerConfig struct {
 	MaxBytes               int64         `mapstructure:"max_bytes"`
 }
 
-type APIConfig struct {
+type WebConfig struct {
 	ListenAddr string `mapstructure:"listen_addr"`
 }
 
@@ -157,8 +157,8 @@ func DefaultServerConfig() *ServerConfig {
 			MaxBytes:             2 * units.GiB,
 			IngressFilterMode:    "blacklist",
 		},
-		API: APIConfig{
-			ListenAddr: ":80",
+		Web: WebConfig{
+			ListenAddr: ":8080",
 		},
 	}
 }

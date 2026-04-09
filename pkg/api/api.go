@@ -1,19 +1,15 @@
 package api
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"time"
 
 	"github.com/HT4w5/flux/pkg/analyzer"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/gin-gonic/gin"
-
-	sloggin "github.com/samber/slog-gin"
 )
 
 type msgResp struct {
@@ -21,90 +17,43 @@ type msgResp struct {
 	Code int    `json:"code"`
 }
 
-type APIServer struct {
-	// External
+type APIHandler struct {
 	analyzer *analyzer.Analyzer
 	index    *index.FileSizeIndex
 	jail     jail.Jail
 	logger   *slog.Logger
-
-	// Internal
-	srv    *http.Server
-	router *gin.Engine
-
-	// Config
-	listenAddr string
 }
 
-func New(opts ...func(*APIServer)) *APIServer {
-	s := &APIServer{
-		logger:     slog.New(slog.DiscardHandler),
-		router:     gin.New(),
-		listenAddr: ":80",
+func New(opts ...func(*APIHandler)) *APIHandler {
+	s := &APIHandler{
+		logger: slog.New(slog.DiscardHandler),
 	}
 
 	for _, opt := range opts {
 		opt(s)
 	}
 
-	// Configure router
-	s.router.Use(sloggin.NewWithConfig(s.logger, sloggin.Config{
-		DefaultLevel:     slog.LevelInfo,
-		ClientErrorLevel: slog.LevelWarn,
-		ServerErrorLevel: slog.LevelError,
-		HandleGinDebug:   true,
-	}))
-	s.router.Use(gin.Recovery())
-
-	// Setup routes
-	s.router.NoRoute(handleNoRoute)
-	// api
-	api := s.router.Group("api")
-	// v1
-	{
-		v1 := api.Group("/v1")
-		v1.GET("/ping", handlePing)
-		v1.GET("/records", s.handleGETBanRecords)
-		v1.POST("/records", s.handlePOSTBanRecord)
-		v1.DELETE("/records", s.handleDELETEBanRecord)
-		v1.GET("/rules", s.handleGETBanRules)
-		v1.GET("/analyzer/stats", s.handleGETAnalyzerStats)
-		v1.GET("/analyzer/cache", s.handleGETAnalyzerCache)
-		v1.GET("/index/stats", s.handleGETIndexStats)
-		v1.GET("/index/cache", s.handleGETIndexCache)
-	}
-
-	s.srv = &http.Server{
-		Addr:              s.listenAddr,
-		Handler:           s.router,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
 	return s
 }
 
-func (s *APIServer) Start() {
-	s.logger.Info("starting")
-	go func() {
-		if err := s.srv.ListenAndServe(); err != http.ErrServerClosed && err != nil {
-			s.logger.Error("listen failed", "error", err)
-		}
-	}()
-}
-
-func (s *APIServer) Shutdown() {
-	s.logger.Info("shutdown")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err := s.srv.Shutdown(ctx)
-	if err != nil {
-		s.logger.Warn("shutdown failure", "error", err)
-	}
+func (s *APIHandler) RegisterRoutes(r *gin.Engine, g *gin.RouterGroup) {
+	r.NoRoute(handleNoRoute)
+	// v1
+	v1 := g.Group("/v1")
+	v1.GET("/ping", handlePing)
+	v1.GET("/records", s.handleGETBanRecords)
+	v1.POST("/records", s.handlePOSTBanRecord)
+	v1.DELETE("/records", s.handleDELETEBanRecord)
+	v1.GET("/rules", s.handleGETBanRules)
+	v1.GET("/analyzer/stats", s.handleGETAnalyzerStats)
+	v1.GET("/analyzer/cache", s.handleGETAnalyzerCache)
+	v1.GET("/index/stats", s.handleGETIndexStats)
+	v1.GET("/index/cache", s.handleGETIndexCache)
 }
 
 // Ban info handlers
 
-func (s *APIServer) handleGETBanRecords(c *gin.Context) {
+func (s *APIHandler) handleGETBanRecords(c *gin.Context) {
 	recs, err := s.jail.List(c.Request.Context())
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
@@ -113,7 +62,7 @@ func (s *APIServer) handleGETBanRecords(c *gin.Context) {
 	c.JSON(http.StatusOK, recs)
 }
 
-func (s *APIServer) handlePOSTBanRecord(c *gin.Context) {
+func (s *APIHandler) handlePOSTBanRecord(c *gin.Context) {
 	var rec dto.BanRecord
 	if err := c.ShouldBindJSON(&rec); err != nil {
 		c.JSON(http.StatusBadRequest, msgResp{
@@ -137,7 +86,7 @@ func (s *APIServer) handlePOSTBanRecord(c *gin.Context) {
 	})
 }
 
-func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
+func (s *APIHandler) handleDELETEBanRecord(c *gin.Context) {
 	addrStr := c.Query("addr")
 	if addrStr == "" {
 		c.JSON(http.StatusBadRequest, msgResp{
@@ -170,7 +119,7 @@ func (s *APIServer) handleDELETEBanRecord(c *gin.Context) {
 	})
 }
 
-func (s *APIServer) handleGETBanRules(c *gin.Context) {
+func (s *APIHandler) handleGETBanRules(c *gin.Context) {
 	rules, err := s.jail.Compile(c.Request.Context())
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
@@ -181,24 +130,24 @@ func (s *APIServer) handleGETBanRules(c *gin.Context) {
 
 // Analyzer handlers
 
-func (s *APIServer) handleGETAnalyzerStats(c *gin.Context) {
+func (s *APIHandler) handleGETAnalyzerStats(c *gin.Context) {
 	stats := s.analyzer.GetStats()
 	c.JSON(http.StatusOK, stats)
 }
 
-func (s *APIServer) handleGETAnalyzerCache(c *gin.Context) {
+func (s *APIHandler) handleGETAnalyzerCache(c *gin.Context) {
 	dump := s.analyzer.DumpCache()
 	c.JSON(http.StatusOK, dump)
 }
 
 // Index handlers
 
-func (s *APIServer) handleGETIndexStats(c *gin.Context) {
+func (s *APIHandler) handleGETIndexStats(c *gin.Context) {
 	stats := s.index.GetStats()
 	c.JSON(http.StatusOK, stats)
 }
 
-func (s *APIServer) handleGETIndexCache(c *gin.Context) {
+func (s *APIHandler) handleGETIndexCache(c *gin.Context) {
 	dump := s.index.DumpCache()
 	c.JSON(http.StatusOK, dump)
 }
@@ -220,32 +169,26 @@ func handleNoRoute(c *gin.Context) {
 }
 
 // Options
-func WithAnalyzer(a *analyzer.Analyzer) func(*APIServer) {
-	return func(s *APIServer) {
+func WithAnalyzer(a *analyzer.Analyzer) func(*APIHandler) {
+	return func(s *APIHandler) {
 		s.analyzer = a
 	}
 }
 
-func WithIndex(i *index.FileSizeIndex) func(*APIServer) {
-	return func(s *APIServer) {
+func WithIndex(i *index.FileSizeIndex) func(*APIHandler) {
+	return func(s *APIHandler) {
 		s.index = i
 	}
 }
 
-func WithJail(j jail.Jail) func(*APIServer) {
-	return func(s *APIServer) {
+func WithJail(j jail.Jail) func(*APIHandler) {
+	return func(s *APIHandler) {
 		s.jail = j
 	}
 }
 
-func WithLogger(l *slog.Logger) func(*APIServer) {
-	return func(s *APIServer) {
+func WithLogger(l *slog.Logger) func(*APIHandler) {
+	return func(s *APIHandler) {
 		s.logger = l
-	}
-}
-
-func WithListenAddr(addr string) func(*APIServer) {
-	return func(s *APIServer) {
-		s.listenAddr = addr
 	}
 }
