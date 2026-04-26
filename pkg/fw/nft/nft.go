@@ -13,7 +13,7 @@ import (
 
 const (
 	tableName = "fluxc"
-	chainName = "input_filter"
+	chainName = "prerouting_filter"
 )
 
 type NFTablesDriver struct {
