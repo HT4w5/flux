@@ -16,13 +16,23 @@ type RuleConfig struct {
 	Expressions []any `mapstructure:"expressions"`
 }
 
-func (re *RuleEngine) buildChains(ch []ChainConfig) (main chain, err error) {
+type chainBuilder struct {
+	re            *RuleEngine
+	bucketMap     map[byte]exprBucket
+	bucketCounter int
+}
+
+func (cb *chainBuilder) buildChains(ch []ChainConfig) (main chain, err error) {
+	if len(ch) == 0 {
+		return chain{}, errors.New("no chains provided")
+	}
+
 	chainMap := make(map[string]chain)
 
 	for _, cc := range ch {
-		c, err := re.buildChain(chainMap, cc)
+		c, err := cb.buildChain(chainMap, cc)
 		if err != nil {
-			return chain{}, nil
+			return chain{}, err
 		}
 		chainMap[c.name] = c
 	}
@@ -34,7 +44,7 @@ func (re *RuleEngine) buildChains(ch []ChainConfig) (main chain, err error) {
 	return main, nil
 }
 
-func (re *RuleEngine) buildChain(chainMap map[string]chain, ch ChainConfig) (chain, error) {
+func (cb *chainBuilder) buildChain(chainMap map[string]chain, ch ChainConfig) (chain, error) {
 	_, ok := chainMap[ch.Name]
 	if ok {
 		return chain{}, fmt.Errorf("duplicate chain name: %s", ch.Name)
@@ -43,7 +53,7 @@ func (re *RuleEngine) buildChain(chainMap map[string]chain, ch ChainConfig) (cha
 	rules := make([]rule, 0, len(ch.Rules))
 
 	for _, r := range ch.Rules {
-		ru, err := re.buildRule(chainMap, r)
+		ru, err := cb.buildRule(chainMap, r)
 		if err != nil {
 			return chain{}, err
 		}
@@ -56,13 +66,13 @@ func (re *RuleEngine) buildChain(chainMap map[string]chain, ch ChainConfig) (cha
 	}, nil
 }
 
-func (re *RuleEngine) buildRule(chainMap map[string]chain, r RuleConfig) (rule, error) {
-	exprs, err := re.buildExprList(r.Expressions)
+func (cb *chainBuilder) buildRule(chainMap map[string]chain, r RuleConfig) (rule, error) {
+	exprs, err := cb.buildExprList(r.Expressions)
 	if err != nil {
 		return rule{}, err
 	}
 
-	stmt, err := re.buildStatement(chainMap, r.Statement)
+	stmt, err := cb.buildStatement(chainMap, r.Statement)
 	if err != nil {
 		return rule{}, err
 	}
@@ -73,7 +83,7 @@ func (re *RuleEngine) buildRule(chainMap map[string]chain, r RuleConfig) (rule, 
 	}, nil
 }
 
-func (re *RuleEngine) buildExpression(expr any) (expression, error) {
+func (cb *chainBuilder) buildExpression(expr any) (expression, error) {
 	switch v := expr.(type) {
 	case string:
 		switch strings.ToUpper(v) {
@@ -100,11 +110,11 @@ func (re *RuleEngine) buildExpression(expr any) (expression, error) {
 			case "NONE":
 				return exprNone{}, nil
 			case "AND":
-				return re.buildExprAnd(value)
+				return cb.buildExprAnd(value)
 			case "OR":
-				return re.buildExprOr(value)
+				return cb.buildExprOr(value)
 			case "NOT":
-				return re.buildExprNot(value)
+				return cb.buildExprNot(value)
 
 			// Time expressions
 			case "BEFORE":
@@ -172,11 +182,26 @@ func (re *RuleEngine) buildExpression(expr any) (expression, error) {
 
 			// Bucket expressions
 			case "BYTE-BUCKET":
-				return re.buildExprByteBucket(value)
+				bkt, err := cb.buildExprByteBucket(value)
+				if err != nil {
+					return nil, err
+				}
+				cb.bucketMap[bkt.prefix()] = bkt
+				return bkt, nil
 			case "FREQ-BUCKET":
-				return re.buildExprFreqBucket(value)
+				bkt, err := cb.buildExprFreqBucket(value)
+				if err != nil {
+					return nil, err
+				}
+				cb.bucketMap[bkt.prefix()] = bkt
+				return bkt, nil
 			case "FILE-RATIO-BUCKET":
-				return re.buildExprFileRatioBucket(value)
+				bkt, err := cb.buildExprFileRatioBucket(value)
+				if err != nil {
+					return nil, err
+				}
+				cb.bucketMap[bkt.prefix()] = bkt
+				return bkt, nil
 
 			default:
 				return nil, fmt.Errorf("unknown expression type: %s", key)
@@ -188,7 +213,7 @@ func (re *RuleEngine) buildExpression(expr any) (expression, error) {
 	return nil, fmt.Errorf("faulty buildExpression; check implementation")
 }
 
-func (re *RuleEngine) buildStatement(chainMap map[string]chain, stmt any) (statement, error) {
+func (cb *chainBuilder) buildStatement(chainMap map[string]chain, stmt any) (statement, error) {
 	switch v := stmt.(type) {
 	case string:
 		switch strings.ToUpper(v) {
@@ -218,7 +243,7 @@ func (re *RuleEngine) buildStatement(chainMap map[string]chain, stmt any) (state
 			case "LOG":
 				return buildStmtLog(value)
 			case "BAN":
-				return re.buildStmtBan(value)
+				return cb.buildStmtBan(value)
 			default:
 				return nil, fmt.Errorf("unknown statement type: %s", key)
 			}

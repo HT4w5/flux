@@ -130,7 +130,7 @@ func buildBanBlame(ctx requestCtx, request *dto.Request) string {
 	}
 }
 
-func (re *RuleEngine) buildStmtBan(value any) (statement, error) {
+func (cb *chainBuilder) buildStmtBan(value any) (statement, error) {
 	str, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("BAN statement expects a string, got %T", value)
@@ -142,7 +142,7 @@ func (re *RuleEngine) buildStmtBan(value any) (statement, error) {
 	}
 
 	return &stmtBan{
-		re:       re,
+		re:       cb.re,
 		duration: du,
 	}, nil
 }

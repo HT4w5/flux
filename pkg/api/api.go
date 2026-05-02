@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"net/netip"
 
-	"github.com/HT4w5/flux/pkg/analyzer"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
+	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,10 +18,10 @@ type msgResp struct {
 }
 
 type APIHandler struct {
-	analyzer *analyzer.Analyzer
-	index    *index.FileSizeIndex
-	jail     jail.Jail
-	logger   *slog.Logger
+	re     *rengine.RuleEngine
+	index  *index.FileSizeIndex
+	jail   jail.Jail
+	logger *slog.Logger
 }
 
 func New(opts ...func(*APIHandler)) *APIHandler {
@@ -131,12 +131,12 @@ func (s *APIHandler) handleGETBanRules(c *gin.Context) {
 // Analyzer handlers
 
 func (s *APIHandler) handleGETAnalyzerStats(c *gin.Context) {
-	stats := s.analyzer.GetStats()
+	stats := s.re.GetStats()
 	c.JSON(http.StatusOK, stats)
 }
 
 func (s *APIHandler) handleGETAnalyzerCache(c *gin.Context) {
-	dump := s.analyzer.DumpCache()
+	dump := s.re.DumpCache()
 	c.JSON(http.StatusOK, dump)
 }
 
@@ -169,9 +169,9 @@ func handleNoRoute(c *gin.Context) {
 }
 
 // Options
-func WithAnalyzer(a *analyzer.Analyzer) func(*APIHandler) {
+func WithRuleEngine(re *rengine.RuleEngine) func(*APIHandler) {
 	return func(s *APIHandler) {
-		s.analyzer = a
+		s.re = re
 	}
 }
 

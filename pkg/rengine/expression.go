@@ -50,47 +50,47 @@ func (o exprOr) match(ctx requestCtx, request *dto.Request) bool {
 }
 
 type exprNot struct {
-	Rule expression
+	rule expression
 }
 
 func (n *exprNot) match(ctx requestCtx, request *dto.Request) bool {
-	return !n.Rule.match(ctx, request)
+	return !n.rule.match(ctx, request)
 }
 
 // Time expressions
 
 type exprBefore struct {
-	Time time.Time
+	time time.Time
 }
 
 func (bf *exprBefore) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.Before(bf.Time)
+	return request.Time.Before(bf.time)
 }
 
 type exprAfter struct {
-	Time time.Time
+	time time.Time
 }
 
 func (af *exprAfter) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.After(af.Time)
+	return request.Time.After(af.time)
 }
 
 // IP address expressions
 
 type exprClientIPCIDR struct {
-	Set netipx.IPSet
+	set netipx.IPSet
 }
 
 func (s *exprClientIPCIDR) match(ctx requestCtx, request *dto.Request) bool {
-	return s.Set.Contains(request.Client)
+	return s.set.Contains(request.Client)
 }
 
 type exprServerIPSet struct {
-	Set netipx.IPSet
+	set netipx.IPSet
 }
 
 func (s *exprServerIPSet) match(ctx requestCtx, request *dto.Request) bool {
-	return s.Set.Contains(request.Server)
+	return s.set.Contains(request.Server)
 }
 
 // Method expressions
@@ -235,34 +235,34 @@ func (as exprAgentSet) match(ctx requestCtx, request *dto.Request) bool {
 
 // Builder methods for expressions
 
-func (re *RuleEngine) buildExprAnd(value any) (expression, error) {
-	exprs, err := re.buildExprList(value)
+func (cb *chainBuilder) buildExprAnd(value any) (expression, error) {
+	exprs, err := cb.buildExprList(value)
 	if err != nil {
 		return nil, fmt.Errorf("building AND expression: %w", err)
 	}
 	return exprAnd(exprs), nil
 }
 
-func (re *RuleEngine) buildExprOr(value any) (expression, error) {
-	exprs, err := re.buildExprList(value)
+func (cb *chainBuilder) buildExprOr(value any) (expression, error) {
+	exprs, err := cb.buildExprList(value)
 	if err != nil {
 		return nil, fmt.Errorf("building OR expression: %w", err)
 	}
 	return exprOr(exprs), nil
 }
 
-func (re *RuleEngine) buildExprNot(value any) (expression, error) {
+func (cb *chainBuilder) buildExprNot(value any) (expression, error) {
 	exprMap, ok := value.(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("NOT expression expects a map, got %T", value)
 	}
 
-	expr, err := re.buildExpression(exprMap)
+	expr, err := cb.buildExpression(exprMap)
 	if err != nil {
 		return nil, fmt.Errorf("building NOT expression: %w", err)
 	}
 
-	return &exprNot{Rule: expr}, nil
+	return &exprNot{rule: expr}, nil
 }
 
 func buildExprBefore(value any) (expression, error) {
@@ -276,7 +276,7 @@ func buildExprBefore(value any) (expression, error) {
 		return nil, fmt.Errorf("parsing time for BEFORE expression: %w", err)
 	}
 
-	return &exprBefore{Time: t}, nil
+	return &exprBefore{time: t}, nil
 }
 
 func buildExprAfter(value any) (expression, error) {
@@ -290,7 +290,7 @@ func buildExprAfter(value any) (expression, error) {
 		return nil, fmt.Errorf("parsing time for AFTER expression: %w", err)
 	}
 
-	return &exprAfter{Time: t}, nil
+	return &exprAfter{time: t}, nil
 }
 
 func buildExprClientIPCIDR(value any) (expression, error) {
@@ -298,7 +298,7 @@ func buildExprClientIPCIDR(value any) (expression, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building CLIENT-IP-CIDR expression: %w", err)
 	}
-	return &exprClientIPCIDR{Set: *ipSet}, nil
+	return &exprClientIPCIDR{set: *ipSet}, nil
 }
 
 func buildExprServerIPSet(value any) (expression, error) {
@@ -306,7 +306,7 @@ func buildExprServerIPSet(value any) (expression, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building SERVER-IP-CIDR expression: %w", err)
 	}
-	return &exprServerIPSet{Set: *ipSet}, nil
+	return &exprServerIPSet{set: *ipSet}, nil
 }
 
 func buildExprIPSet(value any) (*netipx.IPSet, error) {
@@ -327,7 +327,7 @@ func buildExprIPSet(value any) (*netipx.IPSet, error) {
 			continue
 		}
 
-		return nil, fmt.Errorf("IP set item %d: invalid IP or CIDR: %s", i, itemStr)
+		return nil, fmt.Errorf("IP set item %d: invalid CIDR: %s", i, itemStr)
 	}
 
 	ipSet, err := builder.IPSet()
@@ -555,7 +555,7 @@ func buildExprAgentSet(value any) (expression, error) {
 
 // Helper functions
 
-func (re *RuleEngine) buildExprList(value any) ([]expression, error) {
+func (cb *chainBuilder) buildExprList(value any) ([]expression, error) {
 	items, ok := value.([]any)
 	if !ok {
 		return nil, fmt.Errorf("expected a list of expressions, got %T", value)
@@ -563,7 +563,7 @@ func (re *RuleEngine) buildExprList(value any) ([]expression, error) {
 
 	exprs := make([]expression, 0, len(items))
 	for i, item := range items {
-		expr, err := re.buildExpression(item)
+		expr, err := cb.buildExpression(item)
 		if err != nil {
 			return nil, fmt.Errorf("expression %d: %w", i, err)
 		}

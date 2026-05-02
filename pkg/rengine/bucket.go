@@ -27,33 +27,52 @@ type bucketCommon struct {
 	cacheKeyPrefix byte
 }
 
-type bucketCommonBuilder struct {
-	cache         *cache.Cache
-	keyBufferPool *pool.BytePool
-	counter       int
+func (bc *bucketCommon) prefix() byte {
+	return bc.cacheKeyPrefix
 }
 
-func (b *bucketCommonBuilder) newBucketCommon() (bucketCommon, error) {
-	if b.counter >= maxBuckets {
+type bucketType int
+
+const (
+	byteBucket bucketType = iota
+	freqBucket
+	fileRatioBucket
+)
+
+func (cb *chainBuilder) newBucketCommon() (bucketCommon, error) {
+	if cb.bucketCounter >= maxBuckets {
 		return bucketCommon{}, errTooManyBuckets
 	}
 
-	prefix := byte(b.counter)
-	b.counter++
+	prefix := byte(cb.bucketCounter)
+	cb.bucketCounter++
 
 	return bucketCommon{
 		cacheKeyPrefix: prefix,
-		cache:          b.cache,
-		keyBufferPool:  b.keyBufferPool,
+		cache:          cb.re.cache,
+		keyBufferPool:  cb.re.keyBufferPool,
 	}, nil
 }
 
 // Bucket expressions
 
+type exprBucket interface {
+	match(ctx requestCtx, request *dto.Request) bool
+	prefix() byte
+	bucketType() bucketType
+	name() string
+}
+
 type exprByteBucket struct {
 	bucketCommon
 	leak   int64
 	volume int64
+}
+
+func (expr *exprByteBucket) bucketType() bucketType { return byteBucket }
+
+func (expr *exprByteBucket) name() string {
+	return "byte-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
 }
 
 func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -96,7 +115,7 @@ func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
 	return false
 }
 
-func (re *RuleEngine) buildExprByteBucket(value any) (expression, error) {
+func (cb *chainBuilder) buildExprByteBucket(value any) (exprBucket, error) {
 	str, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("BYTE-BUCKET expression expects a string, got %T", value)
@@ -131,7 +150,7 @@ func (re *RuleEngine) buildExprByteBucket(value any) (expression, error) {
 		return nil, fmt.Errorf("BYTE-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	bc, err := re.bcb.newBucketCommon()
+	bc, err := cb.newBucketCommon()
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +166,12 @@ type exprFreqBucket struct {
 	bucketCommon
 	leak   int64
 	volume int64
+}
+
+func (expr *exprFreqBucket) bucketType() bucketType { return freqBucket }
+
+func (expr *exprFreqBucket) name() string {
+	return "freq-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
 }
 
 func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -189,7 +214,7 @@ func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
 	return false
 }
 
-func (re *RuleEngine) buildExprFreqBucket(value any) (expression, error) {
+func (cb *chainBuilder) buildExprFreqBucket(value any) (exprBucket, error) {
 	str, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("FREQ-BUCKET expression expects a string, got %T", value)
@@ -218,7 +243,7 @@ func (re *RuleEngine) buildExprFreqBucket(value any) (expression, error) {
 		return nil, fmt.Errorf("FREQ-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	bc, err := re.bcb.newBucketCommon()
+	bc, err := cb.newBucketCommon()
 	if err != nil {
 		return nil, err
 	}
@@ -231,10 +256,16 @@ func (re *RuleEngine) buildExprFreqBucket(value any) (expression, error) {
 }
 
 type exprFileRatioBucket struct {
+	index *index.FileSizeIndex
 	bucketCommon
-	index  *index.FileSizeIndex
 	leak   float64
 	volume float64
+}
+
+func (expr *exprFileRatioBucket) bucketType() bucketType { return fileRatioBucket }
+
+func (expr *exprFileRatioBucket) name() string {
+	return "file-ratio-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
 }
 
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -285,7 +316,7 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 	return false
 }
 
-func (re *RuleEngine) buildExprFileRatioBucket(value any) (expression, error) {
+func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) {
 	str, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("FILE-RATIO-BUCKET expression expects a string, got %T", value)
@@ -305,7 +336,7 @@ func (re *RuleEngine) buildExprFileRatioBucket(value any) (expression, error) {
 		return nil, fmt.Errorf("FILE-RATIO-BUCKET expects non-negative leak, got %f", leak)
 	}
 
-	volume, err := strconv.ParseFloat(args[0], 64)
+	volume, err := strconv.ParseFloat(args[1], 64)
 	if err != nil {
 		return nil, fmt.Errorf("FILE-RATIO-BUCKET expects float volume, got %s", args[1])
 	}
@@ -314,7 +345,7 @@ func (re *RuleEngine) buildExprFileRatioBucket(value any) (expression, error) {
 		return nil, fmt.Errorf("FILE-RATIO-BUCKET expects non-negative volume, got %f", volume)
 	}
 
-	bc, err := re.bcb.newBucketCommon()
+	bc, err := cb.newBucketCommon()
 	if err != nil {
 		return nil, err
 	}

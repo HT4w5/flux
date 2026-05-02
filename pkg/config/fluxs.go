@@ -5,18 +5,19 @@ import (
 	"time"
 
 	"github.com/HT4w5/flux/pkg/meta"
+	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/docker/go-units"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
 
 type ServerConfig struct {
-	LogSource LogSourceConfig `mapstructure:"log_source"`
-	Log       LogConfig       `mapstructure:"log"`
-	Web       WebConfig       `mapstructure:"web"`
-	Index     IndexConfig     `mapstructure:"index"`
-	Jail      JailConfig      `mapstructure:"jail"`
-	Analyzer  AnalyzerConfig  `mapstructure:"analyzer"`
+	LogSource  LogSourceConfig  `mapstructure:"log_source"`
+	Log        LogConfig        `mapstructure:"log"`
+	Web        WebConfig        `mapstructure:"web"`
+	Index      IndexConfig      `mapstructure:"index"`
+	Jail       JailConfig       `mapstructure:"jail"`
+	RuleEngine RuleEngineConfig `mapstructure:"rule_engine"`
 }
 
 type LogConfig struct {
@@ -54,22 +55,10 @@ type SQLite3JailConfig struct {
 	PruneInterval time.Duration `mapstructure:"prune_interval"`
 }
 
-type AnalyzerConfig struct {
-	IngressFilter          any           `mapstructure:"ingress_filter"`
-	ClientBucketFilter     any           `mapstructure:"client_bucket_filter"`
-	ClientPathBucketFilter any           `mapstructure:"client_path_bucket_filter"`
-	IngressFilterMode      string        `mapstructure:"filter_mode"`
-	RequestLeak            int           `mapstructure:"request_leak"`
-	RequestVolume          int           `mapstructure:"request_volume"`
-	RequestBanDuration     time.Duration `mapstructure:"request_ban_duration"`
-	ByteLeak               int64         `mapstructure:"byte_leak"`
-	ByteVolume             int64         `mapstructure:"byte_volume"`
-	ByteBanDuration        time.Duration `mapstructure:"byte_ban_duration"`
-	FileRatioLeak          float64       `mapstructure:"file_ratio_leak"`
-	FileRatioVolume        float64       `mapstructure:"file_ratio_volume"`
-	FileRatioBanDuration   time.Duration `mapstructure:"file_ratio_ban_duration"`
-	NumWorkers             int           `mapstructure:"num_workers"`
-	MaxBytes               int64         `mapstructure:"max_bytes"`
+type RuleEngineConfig struct {
+	Chains        []rengine.ChainConfig `mapstructure:"chains"`
+	MaxCacheBytes int64                 `mapstructure:"max_cache_bytes"`
+	NumWorkers    int                   `mapstructure:"num_workers"`
 }
 
 type WebConfig struct {
@@ -143,19 +132,9 @@ func DefaultServerConfig() *ServerConfig {
 				BanDstPorts:   []uint16{80, 443}, // HTTP and HTTPS
 			},
 		},
-		Analyzer: AnalyzerConfig{
-			RequestLeak:          10,
-			RequestVolume:        50,
-			RequestBanDuration:   24 * time.Hour,
-			ByteLeak:             40 * units.MB,
-			ByteVolume:           20 * units.GB,
-			ByteBanDuration:      24 * time.Hour,
-			FileRatioLeak:        5,
-			FileRatioVolume:      5e5,
-			FileRatioBanDuration: 7 * 24 * time.Hour,
-			NumWorkers:           8,
-			MaxBytes:             2 * units.GiB,
-			IngressFilterMode:    "blacklist",
+		RuleEngine: RuleEngineConfig{
+			MaxCacheBytes: 200_000_000,
+			NumWorkers:    8,
 		},
 		Web: WebConfig{
 			ListenAddr: ":8080",

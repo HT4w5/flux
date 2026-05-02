@@ -13,7 +13,7 @@ type byteBucketPayload struct {
 
 func (p *byteBucketPayload) write(b []byte) {
 	binary.NativeEndian.PutUint64(b, uint64(p.byteCount))
-	binary.NativeEndian.PutUint64(b, uint64(p.lastUpdate))
+	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
 }
 
 func (p *byteBucketPayload) read(b []byte) {
@@ -30,7 +30,7 @@ type freqBucketPayload struct {
 
 func (p *freqBucketPayload) write(b []byte) {
 	binary.NativeEndian.PutUint64(b, uint64(p.requestCount))
-	binary.NativeEndian.PutUint64(b, uint64(p.lastUpdate))
+	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
 }
 
 func (p *freqBucketPayload) read(b []byte) {
@@ -47,7 +47,7 @@ type fileRatioBucketPayload struct {
 
 func (p *fileRatioBucketPayload) write(b []byte) {
 	binary.NativeEndian.PutUint64(b, uint64(p.byteCount))
-	binary.NativeEndian.PutUint64(b, uint64(p.lastUpdate))
+	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
 }
 
 func (p *fileRatioBucketPayload) read(b []byte) {

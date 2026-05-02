@@ -14,21 +14,24 @@ import (
 )
 
 type RuleEngine struct {
-	bcb           bucketCommonBuilder
 	jail          jail.Jail
 	cache         *cache.Cache
-	fsi           *index.FileSizeIndex
+	fileSizeIndex *index.FileSizeIndex
 	logger        *slog.Logger
 	ctxKVPool     *pool.MapPool[int, uint64]
+	keyBufferPool *pool.BytePool
 	main          chain
-	maxCacheBytes uint64
-	requestChan   <-chan *dto.Request
+	requestChan   <-chan dto.Request
+
+	bucketMap map[byte]exprBucket
 
 	workers struct {
-		sync.WaitGroup
-		num  int
 		stop context.CancelFunc
+		sync.WaitGroup
+		num int
 	}
+
+	maxCacheBytes uint64
 }
 
 type Option func(*RuleEngine)
@@ -46,12 +49,12 @@ func WithJail(j jail.Jail) Option {
 
 // WithFileSizeIndex sets the FileSizeIndex for the RuleEngine.
 // Must not be nil.
-func WithFileSizeIndex(fsi *index.FileSizeIndex) Option {
+func WithFileSizeIndex(fileSizeIndex *index.FileSizeIndex) Option {
 	return func(re *RuleEngine) {
-		if fsi == nil {
+		if fileSizeIndex == nil {
 			panic("rengine: WithFileSizeIndex requires a non-nil FileSizeIndex")
 		}
-		re.fsi = fsi
+		re.fileSizeIndex = fileSizeIndex
 	}
 }
 
@@ -77,9 +80,16 @@ func WithNumWorkers(num int) Option {
 	}
 }
 
+// WithMaxCacheBytes sets the max cache size in bytes.
+func WithMaxCacheBytes(maxCacheBytes uint64) Option {
+	return func(re *RuleEngine) {
+		re.maxCacheBytes = maxCacheBytes
+	}
+}
+
 // WithRequestChan sets the request channel for the RuleEngine.
 // Must not be nil.
-func WithRequestChan(ch <-chan *dto.Request) Option {
+func WithRequestChan(ch <-chan dto.Request) Option {
 	return func(re *RuleEngine) {
 		if ch == nil {
 			panic("rengine: WithRequestChan requires a non-nil channel")
@@ -92,11 +102,12 @@ func New(opts ...Option) *RuleEngine {
 	re := &RuleEngine{
 		logger:        slog.New(slog.DiscardHandler),
 		ctxKVPool:     pool.NewMapPool[int, uint64](32),
+		keyBufferPool: pool.NewBytePool(128),
 		maxCacheBytes: 200_000_000,
 		workers: struct {
-			sync.WaitGroup
-			num  int
 			stop context.CancelFunc
+			sync.WaitGroup
+			num int
 		}{
 			num: 8,
 		},
@@ -107,30 +118,31 @@ func New(opts ...Option) *RuleEngine {
 	}
 
 	re.cache = cache.New(cache.WithSize(re.maxCacheBytes))
-	re.bcb = bucketCommonBuilder{
-		cache:         re.cache,
-		keyBufferPool: pool.NewBytePool(128),
-	}
 
 	return re
 }
 
 func (re *RuleEngine) StartOrReload(chains []ChainConfig) error {
-	if re.jail == nil || re.requestChan == nil {
+	if re.jail == nil || re.requestChan == nil || re.fileSizeIndex == nil {
 		return errors.New("required fields not set")
 	}
 
 	// Build chains
-	re.bcb.counter = 0
-	main, err := re.buildChains(chains)
+	cb := chainBuilder{
+		re:            re,
+		bucketMap:     make(map[byte]exprBucket),
+		bucketCounter: 0,
+	}
+	main, err := cb.buildChains(chains)
 	if err != nil {
 		re.logger.Error("StartOrReload: failed to build chains", "error", err)
 		return err
 	}
 
-	// Shutdown pervious
+	// Shutdown previous
 	re.Shutdown()
 	re.main = main
+	re.bucketMap = cb.bucketMap
 
 	// Start new
 	re.logger.Debug("RuleEngine startup")
@@ -162,11 +174,15 @@ func (re *RuleEngine) routineWorker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case request := <-re.requestChan:
-			re.handleRequest(ctx, request)
+			re.handleRequest(ctx, &request)
 		}
 	}
 }
 
 func (re *RuleEngine) handleRequest(ctx context.Context, request *dto.Request) {
 	re.main.traverse(re.newRequestCtx(ctx), request)
+}
+
+func (re *RuleEngine) GetStats() cache.Statistics {
+	return re.cache.Statistics()
 }

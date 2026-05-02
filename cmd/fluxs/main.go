@@ -10,11 +10,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/HT4w5/flux/pkg/analyzer"
 	"github.com/HT4w5/flux/pkg/api"
 	"github.com/HT4w5/flux/pkg/config"
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/HT4w5/flux/pkg/filter"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/jail/sqlite3"
@@ -23,6 +21,7 @@ import (
 	"github.com/HT4w5/flux/pkg/meta"
 	"github.com/HT4w5/flux/pkg/parser"
 	"github.com/HT4w5/flux/pkg/parser/nginx"
+	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/SladkyCitron/slogcolor"
 	"github.com/gin-gonic/gin"
 	sloggin "github.com/samber/slog-gin"
@@ -129,51 +128,6 @@ func entryPoint() bool {
 		return false
 	}
 
-	// Build filter
-	var f filter.FilterRule
-	if cfg.Analyzer.IngressFilter != nil {
-		f, err = filter.Build(cfg.Analyzer.IngressFilter)
-		if err != nil {
-			logger.Error("failed to build filter", "error", err)
-			return false
-		}
-	} else {
-		f = filter.None{}
-	}
-
-	var cbf filter.FilterRule
-	if cfg.Analyzer.ClientBucketFilter != nil {
-		cbf, err = filter.Build(cfg.Analyzer.ClientBucketFilter)
-		if err != nil {
-			logger.Error("failed to build filter", "error", err)
-			return false
-		}
-	} else {
-		cbf = filter.All{}
-	}
-
-	var cpbf filter.FilterRule
-	if cfg.Analyzer.ClientPathBucketFilter != nil {
-		cpbf, err = filter.Build(cfg.Analyzer.ClientPathBucketFilter)
-		if err != nil {
-			logger.Error("failed to build filter", "error", err)
-			return false
-		}
-	} else {
-		cpbf = filter.All{}
-	}
-
-	var filterMode analyzer.FilterMode
-	switch cfg.Analyzer.IngressFilterMode {
-	case "whitelist":
-		filterMode = analyzer.Whitelist
-	case "blacklist":
-		filterMode = analyzer.Blacklist
-	default:
-		logger.Error("unknown filter mode", "mode", cfg.Analyzer.IngressFilter)
-		return false
-	}
-
 	// Create log source
 	requestChan := make(chan dto.Request)
 	defer close(requestChan)
@@ -210,39 +164,22 @@ func entryPoint() bool {
 		return false
 	}
 
-	// Create analyzer
-	if cfg.Analyzer.NumWorkers < 1 {
-		cfg.Analyzer.NumWorkers = 1
+	// Create RuleEngine
+	if cfg.RuleEngine.MaxCacheBytes < 0 {
+		cfg.RuleEngine.MaxCacheBytes = 1_000_000
 	}
 
-	analyzerConfig := analyzer.Config{
-		RequestLeak:          cfg.Analyzer.RequestLeak,
-		RequestVolume:        cfg.Analyzer.RequestVolume,
-		RequestBanDuration:   cfg.Analyzer.RequestBanDuration,
-		ByteLeak:             cfg.Analyzer.ByteLeak,
-		ByteVolume:           cfg.Analyzer.ByteVolume,
-		ByteBanDuration:      cfg.Analyzer.ByteBanDuration,
-		FileRatioLeak:        cfg.Analyzer.FileRatioLeak,
-		FileRatioVolume:      cfg.Analyzer.FileRatioVolume,
-		FileRatioBanDuration: cfg.Analyzer.FileRatioBanDuration,
-		NumWorkers:           cfg.Analyzer.NumWorkers,
-		MaxBytes:             cfg.Analyzer.MaxBytes,
-		FilterMode:           filterMode,
-	}
-
-	analyzer := analyzer.New(
-		analyzer.WithRequestChan(requestChan),
-		analyzer.WithIndex(fileSizeIndex),
-		analyzer.WithJail(jailInstance),
-		analyzer.WithLogger(logger),
-		analyzer.WithConfig(analyzerConfig),
-		analyzer.WithIngressFilter(f),
-		analyzer.WithClientBucketFilter(cbf),
-		analyzer.WithClientPathBucketFilter(cpbf),
+	re := rengine.New(
+		rengine.WithFileSizeIndex(fileSizeIndex),
+		rengine.WithJail(jailInstance),
+		rengine.WithLogger(logger),
+		rengine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
+		rengine.WithRequestChan(requestChan),
+		rengine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
 	)
 
 	apiHandler := api.New(
-		api.WithAnalyzer(analyzer),
+		api.WithRuleEngine(re),
 		api.WithIndex(fileSizeIndex),
 		api.WithJail(jailInstance),
 		api.WithLogger(logger),
@@ -266,13 +203,17 @@ func entryPoint() bool {
 	}
 	defer jailInstance.Close()
 
-	analyzer.Start()
-	defer analyzer.Shutdown()
+	if err := re.StartOrReload(cfg.RuleEngine.Chains); err != nil {
+		logger.Error("failed to start RuleEngine", "error", err)
+		return false
+	}
+
+	defer re.Shutdown()
 
 	logSource.Start()
 	defer logSource.Shutdown()
 
-	// Start http server
+	// Start HTTP server
 	httpServer := &http.Server{
 		Addr:              cfg.Web.ListenAddr,
 		Handler:           router,
