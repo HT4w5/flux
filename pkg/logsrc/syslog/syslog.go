@@ -135,8 +135,8 @@ func (s *SyslogSource) Start() {
 	ctx, stop := context.WithCancel(context.Background())
 	s.workerStop = stop
 
-	for i := range s.numWorkers {
-		s.workerWg.Go(func() { s.worker(ctx, i) })
+	for range s.numWorkers {
+		s.workerWg.Go(func() { s.worker(ctx) })
 	}
 }
 
@@ -149,12 +149,10 @@ func (s *SyslogSource) Shutdown() {
 	}
 }
 
-func (s *SyslogSource) worker(ctx context.Context, id int) {
-	s.logger.Info("worker start", "id", id)
+func (s *SyslogSource) worker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("worker shutdown", "id", id)
 			return
 		case logPart := <-s.logPartsChan:
 			if logPart == nil {
