@@ -23,6 +23,7 @@ import (
 	"github.com/HT4w5/flux/pkg/parser"
 	"github.com/HT4w5/flux/pkg/parser/nginx"
 	"github.com/SladkyCitron/slogcolor"
+	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
 	sloggin "github.com/samber/slog-gin"
 	"github.com/spf13/pflag"
@@ -196,6 +197,10 @@ func entryPoint() bool {
 
 	apiGrp := router.Group("/api")
 	apiHandler.RegisterRoutes(router, apiGrp)
+
+	if cfg.Web.PProf {
+		pprof.Register(router)
+	}
 
 	if err := jailInstance.Start(); err != nil {
 		logger.Error("failed to start jail", "error", err)

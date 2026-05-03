@@ -63,6 +63,7 @@ type RuleEngineConfig struct {
 
 type WebConfig struct {
 	ListenAddr string `mapstructure:"listen_addr"`
+	PProf      bool   `mapstructure:"pprof"`
 }
 
 func (cfg *ServerConfig) Load() error {
@@ -138,6 +139,7 @@ func DefaultServerConfig() *ServerConfig {
 		},
 		Web: WebConfig{
 			ListenAddr: ":8080",
+			PProf:      false,
 		},
 	}
 }
