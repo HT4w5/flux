@@ -240,6 +240,8 @@ func (cb *chainBuilder) buildStatement(chainMap map[string]chain, stmt any) (sta
 				return &stmtContinue{}, nil
 			case "GOTO":
 				return buildStmtGoto(chainMap, value)
+			case "JUMP":
+				return buildStmtJump(chainMap, value)
 			case "LOG":
 				return buildStmtLog(value)
 			case "BAN":

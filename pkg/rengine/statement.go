@@ -43,7 +43,31 @@ func buildStmtGoto(chainMap map[string]chain, value any) (statement, error) {
 		return nil, fmt.Errorf("GOTO statement targets non-existent chain: %s", chainName)
 	}
 
-	return &stmtGoto{
+	return &stmtJump{
+		target: chain,
+	}, nil
+}
+
+type stmtJump struct {
+	target chain
+}
+
+func (stmt *stmtJump) execute(ctx requestCtx, request *dto.Request) (end bool) {
+	stmt.target.traverse(ctx, request)
+	return false
+}
+
+func buildStmtJump(chainMap map[string]chain, value any) (statement, error) {
+	chainName, ok := value.(string)
+	if !ok {
+		return nil, fmt.Errorf("JUMP statement expects a string, got %T", value)
+	}
+	chain, ok := chainMap[chainName]
+	if !ok {
+		return nil, fmt.Errorf("JUMP statement targets non-existent chain: %s", chainName)
+	}
+
+	return &stmtJump{
 		target: chain,
 	}, nil
 }
