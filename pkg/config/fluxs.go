@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/meta"
-	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/docker/go-units"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
@@ -56,9 +56,9 @@ type SQLite3JailConfig struct {
 }
 
 type RuleEngineConfig struct {
-	Chains        []rengine.ChainConfig `mapstructure:"chains"`
-	MaxCacheBytes int64                 `mapstructure:"max_cache_bytes"`
-	NumWorkers    int                   `mapstructure:"num_workers"`
+	Chains        []engine.ChainConfig `mapstructure:"chains"`
+	MaxCacheBytes int64                `mapstructure:"max_cache_bytes"`
+	NumWorkers    int                  `mapstructure:"num_workers"`
 }
 
 type WebConfig struct {

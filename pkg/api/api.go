@@ -6,9 +6,9 @@ import (
 	"net/netip"
 
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
-	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,7 +18,7 @@ type msgResp struct {
 }
 
 type APIHandler struct {
-	re     *rengine.RuleEngine
+	re     *engine.RuleEngine
 	index  *index.FileSizeIndex
 	jail   jail.Jail
 	logger *slog.Logger
@@ -169,7 +169,7 @@ func handleNoRoute(c *gin.Context) {
 }
 
 // Options
-func WithRuleEngine(re *rengine.RuleEngine) func(*APIHandler) {
+func WithRuleEngine(re *engine.RuleEngine) func(*APIHandler) {
 	return func(s *APIHandler) {
 		s.re = re
 	}

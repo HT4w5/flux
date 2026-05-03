@@ -1,4 +1,4 @@
-package rengine
+package engine
 
 import (
 	"context"
@@ -41,7 +41,7 @@ type Option func(*RuleEngine)
 func WithJail(j jail.Jail) Option {
 	return func(re *RuleEngine) {
 		if j == nil {
-			panic("rengine: WithJail requires a non-nil jail")
+			panic("engine: WithJail requires a non-nil jail")
 		}
 		re.jail = j
 	}
@@ -52,7 +52,7 @@ func WithJail(j jail.Jail) Option {
 func WithFileSizeIndex(fileSizeIndex *index.FileSizeIndex) Option {
 	return func(re *RuleEngine) {
 		if fileSizeIndex == nil {
-			panic("rengine: WithFileSizeIndex requires a non-nil FileSizeIndex")
+			panic("engine: WithFileSizeIndex requires a non-nil FileSizeIndex")
 		}
 		re.fileSizeIndex = fileSizeIndex
 	}
@@ -63,7 +63,7 @@ func WithFileSizeIndex(fileSizeIndex *index.FileSizeIndex) Option {
 func WithLogger(logger *slog.Logger) Option {
 	return func(re *RuleEngine) {
 		if logger == nil {
-			panic("rengine: WithLogger requires a non-nil logger")
+			panic("engine: WithLogger requires a non-nil logger")
 		}
 		re.logger = logger
 	}
@@ -74,7 +74,7 @@ func WithLogger(logger *slog.Logger) Option {
 func WithNumWorkers(num int) Option {
 	return func(re *RuleEngine) {
 		if num <= 0 {
-			panic("rengine: WithNumWorkers requires a positive number")
+			panic("engine: WithNumWorkers requires a positive number")
 		}
 		re.workers.num = num
 	}
@@ -92,7 +92,7 @@ func WithMaxCacheBytes(maxCacheBytes uint64) Option {
 func WithRequestChan(ch <-chan dto.Request) Option {
 	return func(re *RuleEngine) {
 		if ch == nil {
-			panic("rengine: WithRequestChan requires a non-nil channel")
+			panic("engine: WithRequestChan requires a non-nil channel")
 		}
 		re.requestChan = ch
 	}

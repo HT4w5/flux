@@ -13,6 +13,7 @@ import (
 	"github.com/HT4w5/flux/pkg/api"
 	"github.com/HT4w5/flux/pkg/config"
 	"github.com/HT4w5/flux/pkg/dto"
+	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/jail/sqlite3"
@@ -21,7 +22,6 @@ import (
 	"github.com/HT4w5/flux/pkg/meta"
 	"github.com/HT4w5/flux/pkg/parser"
 	"github.com/HT4w5/flux/pkg/parser/nginx"
-	"github.com/HT4w5/flux/pkg/rengine"
 	"github.com/SladkyCitron/slogcolor"
 	"github.com/gin-gonic/gin"
 	sloggin "github.com/samber/slog-gin"
@@ -169,13 +169,13 @@ func entryPoint() bool {
 		cfg.RuleEngine.MaxCacheBytes = 1_000_000
 	}
 
-	re := rengine.New(
-		rengine.WithFileSizeIndex(fileSizeIndex),
-		rengine.WithJail(jailInstance),
-		rengine.WithLogger(logger),
-		rengine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
-		rengine.WithRequestChan(requestChan),
-		rengine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
+	re := engine.New(
+		engine.WithFileSizeIndex(fileSizeIndex),
+		engine.WithJail(jailInstance),
+		engine.WithLogger(logger),
+		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
+		engine.WithRequestChan(requestChan),
+		engine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
 	)
 
 	apiHandler := api.New(
