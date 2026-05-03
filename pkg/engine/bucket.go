@@ -10,7 +10,6 @@ import (
 
 	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
 )
@@ -258,7 +257,7 @@ func (cb *chainBuilder) buildExprFreqBucket(value any) (exprBucket, error) {
 }
 
 type exprFileRatioBucket struct {
-	index *index.FileSizeIndex
+	index FileSizeIndex
 	bucketCommon
 	leak   float64
 	volume float64
@@ -354,6 +353,7 @@ func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) 
 	}
 
 	return &exprFileRatioBucket{
+		index:        cb.re.fileSizeIndex,
 		bucketCommon: bc,
 		leak:         leak,
 		volume:       volume,
