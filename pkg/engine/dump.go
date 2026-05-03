@@ -150,6 +150,7 @@ func (re *RuleEngine) DumpCache() CacheDump {
 
 			if client == nil {
 				client = make(map[string]FileRatioBucketEntryDump)
+				bkt.Entries[addr.String()] = client
 			}
 
 			client[path] = FileRatioBucketEntryDump{
