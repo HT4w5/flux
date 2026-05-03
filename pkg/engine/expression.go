@@ -419,6 +419,10 @@ func buildExprStatus(value any) (expression, error) {
 	switch v := value.(type) {
 	case int:
 		return exprStatus(v), nil
+	case int64:
+		return exprStatus(int(v)), nil
+	case uint64:
+		return exprStatus(int(v)), nil
 	case float64:
 		return exprStatus(int(v)), nil
 	case string:
@@ -436,6 +440,10 @@ func buildExprStatusClass(value any) (expression, error) {
 	switch v := value.(type) {
 	case int:
 		return exprStatusClass(v), nil
+	case int64:
+		return exprStatusClass(int(v)), nil
+	case uint64:
+		return exprStatusClass(int(v)), nil
 	case float64:
 		return exprStatusClass(int(v)), nil
 	case string:
@@ -580,6 +588,8 @@ func parseExprByteSize(value any) (int64, error) {
 		return int64(v), nil
 	case int64:
 		return v, nil
+	case uint64:
+		return int64(v), nil
 	case float64:
 		return int64(v), nil
 	case string:
@@ -596,6 +606,8 @@ func parseExprDuration(value any) (time.Duration, error) {
 	case int:
 		return time.Duration(v) * time.Second, nil
 	case int64:
+		return time.Duration(v) * time.Second, nil
+	case uint64:
 		return time.Duration(v) * time.Second, nil
 	case float64:
 		return time.Duration(v) * time.Second, nil

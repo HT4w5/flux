@@ -8,15 +8,21 @@ import (
 
 	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/HT4w5/flux/pkg/index"
-	"github.com/HT4w5/flux/pkg/jail"
 	"github.com/HT4w5/flux/pkg/pool"
 )
 
+type Jail interface {
+	Add(ctx context.Context, b *dto.BanRecord) error
+}
+
+type FileSizeIndex interface {
+	GetSize(path []byte) (int64, bool)
+}
+
 type RuleEngine struct {
-	jail          jail.Jail
+	jail          Jail
 	cache         *cache.Cache
-	fileSizeIndex *index.FileSizeIndex
+	fileSizeIndex FileSizeIndex
 	logger        *slog.Logger
 	ctxKVPool     *pool.MapPool[int, uint64]
 	keyBufferPool *pool.BytePool
@@ -38,7 +44,7 @@ type Option func(*RuleEngine)
 
 // WithJail sets the Jail for the RuleEngine.
 // Must not be nil.
-func WithJail(j jail.Jail) Option {
+func WithJail(j Jail) Option {
 	return func(re *RuleEngine) {
 		if j == nil {
 			panic("engine: WithJail requires a non-nil jail")
@@ -49,7 +55,7 @@ func WithJail(j jail.Jail) Option {
 
 // WithFileSizeIndex sets the FileSizeIndex for the RuleEngine.
 // Must not be nil.
-func WithFileSizeIndex(fileSizeIndex *index.FileSizeIndex) Option {
+func WithFileSizeIndex(fileSizeIndex FileSizeIndex) Option {
 	return func(re *RuleEngine) {
 		if fileSizeIndex == nil {
 			panic("engine: WithFileSizeIndex requires a non-nil FileSizeIndex")
