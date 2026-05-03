@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/goccy/go-yaml"
+	"go.yaml.in/yaml/v3"
 )
 
 // --------------- stubs ---------------
@@ -75,8 +75,8 @@ type stubFileSizeIndex struct {
 	sizes map[string]int64
 }
 
-func newStubFileSizeIndex() *stubFileSizeIndex {
-	return &stubFileSizeIndex{sizes: make(map[string]int64)}
+func newStubFileSizeIndex(sizes map[string]int64) *stubFileSizeIndex {
+	return &stubFileSizeIndex{sizes: sizes}
 }
 
 func (s *stubFileSizeIndex) GetSize(path []byte) (int64, bool) {
@@ -141,7 +141,7 @@ func newRequest(ip netip.Addr, opts ...func(*dto.Request)) dto.Request {
 
 func TestFlowControl(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex()
+	fsi := newStubFileSizeIndex(map[string]int64{})
 
 	chains := readYAMLChains(t, "testdata/flow_control.yaml")
 
@@ -202,7 +202,7 @@ func TestFlowControl(t *testing.T) {
 
 func TestExpressionMatching(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex()
+	fsi := newStubFileSizeIndex(map[string]int64{})
 
 	chains := readYAMLChains(t, "testdata/expr_matching.yaml")
 
@@ -354,12 +354,16 @@ func TestExpressionMatching(t *testing.T) {
 
 func TestBucketBehavior(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex()
+	fsi := newStubFileSizeIndex(map[string]int64{
+		"/file1.zip": 1000,
+	})
 	// Setup for file-ratio bucket
 	fsi.sizes["test/data.txt"] = 2000 // file size for ratio
 
 	chains := readYAMLChains(t, "testdata/bucket.yaml")
 	addr1 := netip.MustParseAddr("10.0.0.1")
+
+	baseTime := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 	t.Run("byte bucket overflow on second request", func(t *testing.T) {
 		jail.bans = jail.bans[:0]
@@ -374,14 +378,15 @@ func TestBucketBehavior(t *testing.T) {
 		if err := re.StartOrReload(cfg); err != nil {
 			t.Fatalf("StartOrReload: %v", err)
 		}
+		defer re.Shutdown()
 
-		// First request: byte count 2000 > volume 1024 → immediate ban
+		// First request: byte count 2000 > volume 1024 -> immediate ban
 		req1 := newRequest(addr1, withSent(2000))
 		ch <- req1
 		time.Sleep(100 * time.Millisecond)
 
 		if got := jail.banCount(); got != 1 {
-			t.Fatalf("first request: expected 1 ban, got %d", got)
+			t.Errorf("first request: expected 1 ban, got %d", got)
 		}
 	})
 
@@ -398,19 +403,20 @@ func TestBucketBehavior(t *testing.T) {
 		if err := re.StartOrReload(cfg); err != nil {
 			t.Fatalf("StartOrReload: %v", err)
 		}
+		defer re.Shutdown()
 
 		// Requests 1 and 2: should not trigger (<=2 volume)
 		req := newRequest(addr1)
 		ch <- req
 		time.Sleep(50 * time.Millisecond)
 		if got := jail.banCount(); got != 0 {
-			t.Fatalf("after 1st request: expected 0 bans, got %d", got)
+			t.Errorf("after 1st request: expected 0 bans, got %d", got)
 		}
 
 		ch <- req
 		time.Sleep(50 * time.Millisecond)
 		if got := jail.banCount(); got != 0 {
-			t.Fatalf("after 2nd request: expected 0 bans, got %d", got)
+			t.Errorf("after 2nd request: expected 0 bans, got %d", got)
 		}
 
 		// Request 3: exceeds volume of 2
@@ -421,7 +427,60 @@ func TestBucketBehavior(t *testing.T) {
 		}
 	})
 
-	t.Run("byte bucket with leak", func(t *testing.T) {
+	t.Run("file ratio bucket", func(t *testing.T) {
+		jail.bans = jail.bans[:0]
+		ch := make(chan dto.Request, 3)
+		re := New(
+			WithJail(jail),
+			WithFileSizeIndex(fsi),
+			WithRequestChan(ch),
+			WithNumWorkers(1),
+		)
+		cfg := renameMainTo(chains, "bucket-file-ratio")
+		if err := re.StartOrReload(cfg); err != nil {
+			t.Fatalf("StartOrReload: %v", err)
+		}
+		defer re.Shutdown()
+
+		// First request: sent=100, ratio=100/1000=0.1 -> don't ban
+		req := newRequest(addr1, withSent(100), withURL("/file1.zip"))
+		ch <- req
+		time.Sleep(50 * time.Millisecond)
+		if got := jail.banCount(); got != 0 {
+			t.Errorf("first request: expected 0 ban, got %d", got)
+		}
+
+		// Second request: sent=100, ratio=200/1000=0.2 -> don't ban
+		ch <- req
+		time.Sleep(50 * time.Millisecond)
+		if got := jail.banCount(); got != 0 {
+			t.Errorf("second request: expected 0 ban, got %d", got)
+		}
+
+		// Third request: sent=100, ratio=300/1000=0.3 -> don't ban
+		ch <- req
+		time.Sleep(50 * time.Millisecond)
+		if got := jail.banCount(); got != 0 {
+			t.Errorf("third request: expected 0 ban, got %d", got)
+		}
+
+		// Forth request: sent=100, ratio=400/1000=0.4 -> don't ban
+		ch <- req
+		time.Sleep(50 * time.Millisecond)
+		if got := jail.banCount(); got != 0 {
+			t.Errorf("forth request: expected 0 ban, got %d", got)
+		}
+
+		// Fifth request: sent=101, ratio=501/1000=0.501 -> ban
+		req = newRequest(addr1, withSent(101), withURL("/file1.zip"))
+		ch <- req
+		time.Sleep(50 * time.Millisecond)
+		if got := jail.banCount(); got != 1 {
+			t.Errorf("fifth request: expected 1 ban, got %d", got)
+		}
+	})
+
+	t.Run("byte bucket less than leak", func(t *testing.T) {
 		jail.bans = jail.bans[:0]
 		ch := make(chan dto.Request, 3)
 		re := New(
@@ -434,17 +493,44 @@ func TestBucketBehavior(t *testing.T) {
 		if err := re.StartOrReload(cfg); err != nil {
 			t.Fatalf("StartOrReload: %v", err)
 		}
+		defer re.Shutdown()
 
-		// First request: sent=4000 > volume=2048 → ban immediately
-		req := newRequest(addr1, withSent(4000))
-		ch <- req
-		time.Sleep(50 * time.Millisecond)
-		if got := jail.banCount(); got != 1 {
-			t.Fatalf("first request: expected 1 ban (overflow), got %d", got)
+		for i := range 10000 {
+			req := newRequest(addr1, withSent(500), withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			ch <- req
+			if got := jail.banCount(); got != 0 {
+				t.Errorf("expected 0 ban, got %d", got)
+			}
 		}
 	})
 
-	t.Run("freq bucket with leak single overflow", func(t *testing.T) {
+	t.Run("byte bucket more than leak", func(t *testing.T) {
+		jail.bans = jail.bans[:0]
+		ch := make(chan dto.Request, 3)
+		re := New(
+			WithJail(jail),
+			WithFileSizeIndex(fsi),
+			WithRequestChan(ch),
+			WithNumWorkers(1),
+		)
+		cfg := renameMainTo(chains, "bucket-byte-leak")
+		if err := re.StartOrReload(cfg); err != nil {
+			t.Fatalf("StartOrReload: %v", err)
+		}
+		defer re.Shutdown()
+
+		for i := range 10000 {
+			req := newRequest(addr1, withSent(512+30), withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			ch <- req
+			if got := jail.banCount(); got >= 1 {
+				return
+			}
+		}
+
+		t.Errorf("expected to be banned")
+	})
+
+	t.Run("freq bucket less than leak", func(t *testing.T) {
 		jail.bans = jail.bans[:0]
 		ch := make(chan dto.Request, 3)
 		re := New(
@@ -457,29 +543,93 @@ func TestBucketBehavior(t *testing.T) {
 		if err := re.StartOrReload(cfg); err != nil {
 			t.Fatalf("StartOrReload: %v", err)
 		}
+		defer re.Shutdown()
 
-		ask := newRequest(addr1)
+		for i := range 10000 {
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i*2)*time.Second)))
+			ch <- req
+			if got := jail.banCount(); got >= 1 {
+				t.Errorf("shouldn't be banned")
+			}
+		}
+	})
 
-		// Request 1: ok (leak=1, so virtually nothing to leak the first time; count=1 <= 2)
-		ch <- ask
-		time.Sleep(50 * time.Millisecond)
-		if got := jail.banCount(); got != 0 {
-			t.Fatalf("after 1st request: expected 0 bans, got %d", got)
+	t.Run("freq bucket more than leak", func(t *testing.T) {
+		jail.bans = jail.bans[:0]
+		ch := make(chan dto.Request, 3)
+		re := New(
+			WithJail(jail),
+			WithFileSizeIndex(fsi),
+			WithRequestChan(ch),
+			WithNumWorkers(1),
+		)
+		cfg := renameMainTo(chains, "bucket-freq-leak")
+		if err := re.StartOrReload(cfg); err != nil {
+			t.Fatalf("StartOrReload: %v", err)
+		}
+		defer re.Shutdown()
+
+		for i := range 10000 {
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			ch <- req
+			ch <- req
+			if got := jail.banCount(); got >= 1 {
+				return
+			}
 		}
 
-		// Request 2: count=2 <= 2, still ok
-		ch <- ask
-		time.Sleep(50 * time.Millisecond)
-		if got := jail.banCount(); got != 0 {
-			t.Fatalf("after 2nd request: expected 0 bans, got %d", got)
+		t.Errorf("expected to be banned")
+	})
+
+	t.Run("file ratio bucket less than leak", func(t *testing.T) {
+		jail.bans = jail.bans[:0]
+		ch := make(chan dto.Request, 3)
+		re := New(
+			WithJail(jail),
+			WithFileSizeIndex(fsi),
+			WithRequestChan(ch),
+			WithNumWorkers(1),
+		)
+		cfg := renameMainTo(chains, "bucket-file-ratio-leak")
+		if err := re.StartOrReload(cfg); err != nil {
+			t.Fatalf("StartOrReload: %v", err)
+		}
+		defer re.Shutdown()
+
+		for i := range 10000 {
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)), withSent(50), withURL("/file1.zip"))
+			ch <- req
+			if got := jail.banCount(); got >= 1 {
+				t.Errorf("shouldn't be banned")
+			}
+		}
+	})
+
+	t.Run("file ratio bucket more than leak", func(t *testing.T) {
+		jail.bans = jail.bans[:0]
+		ch := make(chan dto.Request, 3)
+		re := New(
+			WithJail(jail),
+			WithFileSizeIndex(fsi),
+			WithRequestChan(ch),
+			WithNumWorkers(1),
+		)
+		cfg := renameMainTo(chains, "bucket-file-ratio-leak")
+		if err := re.StartOrReload(cfg); err != nil {
+			t.Fatalf("StartOrReload: %v", err)
+		}
+		defer re.Shutdown()
+
+		for i := range 10000 {
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)), withSent(1000), withURL("/file1.zip"))
+			ch <- req
+			ch <- req
+			if got := jail.banCount(); got >= 1 {
+				return
+			}
 		}
 
-		// Request 3: count=3 > 2 → ban
-		ch <- ask
-		time.Sleep(100 * time.Millisecond)
-		if got := jail.banCount(); got != 1 {
-			t.Errorf("after 3rd request: expected 1 ban, got %d", got)
-		}
+		t.Errorf("expected to be banned")
 	})
 }
 
@@ -487,7 +637,7 @@ func TestBucketBehavior(t *testing.T) {
 
 func TestBanAndLogStatements(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex()
+	fsi := newStubFileSizeIndex(map[string]int64{})
 	addr1 := netip.MustParseAddr("10.0.0.1")
 
 	chains := readYAMLChains(t, "testdata/ban_log.yaml")
@@ -511,7 +661,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		if got := jail.banCount(); got != 1 {
-			t.Fatalf("expected 1 ban, got %d", got)
+			t.Errorf("expected 1 ban, got %d", got)
 		}
 		lb := jail.lastBan()
 		d := time.Until(lb.ExpiresAt)
@@ -531,7 +681,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		)
 		cfg := renameMainTo(chains, "ban-2h")
 		if err := re.StartOrReload(cfg); err != nil {
-			t.Fatalf("StartOrReload: %v", err)
+			t.Errorf("StartOrReload: %v", err)
 		}
 		defer re.Shutdown()
 
@@ -539,7 +689,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		if got := jail.banCount(); got != 1 {
-			t.Fatalf("expected 1 ban, got %d", got)
+			t.Errorf("expected 1 ban, got %d", got)
 		}
 		lb := jail.lastBan()
 		d := time.Until(lb.ExpiresAt)
@@ -567,7 +717,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 
 		if got := jail.banCount(); got != 1 {
-			t.Fatalf("expected 1 ban, got %d", got)
+			t.Errorf("expected 1 ban, got %d", got)
 		}
 		lb := jail.lastBan()
 		d := time.Until(lb.ExpiresAt)
@@ -719,6 +869,6 @@ func withServer(ip netip.Addr) func(*dto.Request) {
 	return func(r *dto.Request) { r.Server = ip }
 }
 
-func withIP(ip netip.Addr) func(*dto.Request) {
+func withClient(ip netip.Addr) func(*dto.Request) {
 	return func(r *dto.Request) { r.Client = ip }
 }
