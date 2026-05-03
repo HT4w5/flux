@@ -95,6 +95,7 @@ func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
+		newBuf = buf[:]
 	}
 	bkt.byteCount += request.Sent
 
@@ -194,6 +195,7 @@ func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
+		newBuf = buf[:]
 	}
 	bkt.requestCount++
 
@@ -296,6 +298,7 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
+		newBuf = buf[:]
 	}
 	bkt.byteCount += request.Sent
 
