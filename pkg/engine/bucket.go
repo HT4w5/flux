@@ -360,7 +360,9 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 	bkt.byteCount += request.Sent
 
 	if timeDelta > 0 {
-		bkt.byteCount = max(0, bkt.byteCount-int64(expr.leak*float64(size*timeDelta)))
+		if expr.leak != 0 {
+			bkt.byteCount = max(0, bkt.byteCount-max(1, int64(expr.leak*float64(size*timeDelta)))) // At least leak 1 byte if expr.leak is not zero
+		}
 		bkt.lastUpdate = request.Time.Unix()
 	}
 
