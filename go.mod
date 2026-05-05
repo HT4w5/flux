@@ -4,7 +4,6 @@ go 1.25.8
 
 require (
 	github.com/HT4w5/cache v0.1.2
-	github.com/HT4w5/trie v0.1.0
 	github.com/SladkyCitron/slogcolor v1.8.0
 	github.com/bytedance/sonic v1.15.0
 	github.com/docker/go-units v0.5.0

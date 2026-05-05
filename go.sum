@@ -1,7 +1,5 @@
 github.com/HT4w5/cache v0.1.2 h1:ht7Ramv8yBCrwre60uUjudx4QmZ8yMrfSDRoVrYaoSI=
 github.com/HT4w5/cache v0.1.2/go.mod h1:SHgj407hVchcNZEQ4yGy/j2hYzIqF9lYOOKEaAjtGlg=
-github.com/HT4w5/trie v0.1.0 h1:x4F+m0oyaWECFOYFidPrv26BKYtMcwsVITJak8+tnvs=
-github.com/HT4w5/trie v0.1.0/go.mod h1:7F2Yx5DuwnlkDFg1/pOU+tMPyqhwY0BB3NU8O5ztpdQ=
 github.com/SladkyCitron/slogcolor v1.8.0 h1:ln4mUPfVhs7a/vZfjnKkz5YZ71Bg/KFWneS2hfFq6FM=
 github.com/SladkyCitron/slogcolor v1.8.0/go.mod h1:ft8LEVIl4isUkebakhv+ngNXJjWBumnwhXfxTLApf3M=
 github.com/bytedance/gopkg v0.1.3 h1:TPBSwH8RsouGCBcMBktLt1AymVo2TVsBVCY4b6TnZ/M=
