@@ -56,13 +56,14 @@ type exprBucket interface {
 // --- Byte Bucket ---
 
 type exprByteBucket struct {
+	_name string
 	bucketCommon
 	leak   int64
 	volume int64
 }
 
 func (expr *exprByteBucket) name() string {
-	return "byte-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
+	return expr._name
 }
 
 func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -147,6 +148,7 @@ func (cb *chainBuilder) buildExprByteBucket(value any) (exprBucket, error) {
 	}
 
 	return &exprByteBucket{
+		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-byte",
 		bucketCommon: bc,
 		leak:         leak,
 		volume:       volume,
@@ -156,13 +158,14 @@ func (cb *chainBuilder) buildExprByteBucket(value any) (exprBucket, error) {
 // --- Freq Bucket ---
 
 type exprFreqBucket struct {
+	_name string
 	bucketCommon
 	leak   int64
 	volume int64
 }
 
 func (expr *exprFreqBucket) name() string {
-	return "freq-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
+	return expr._name
 }
 
 func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -241,6 +244,7 @@ func (cb *chainBuilder) buildExprFreqBucket(value any) (exprBucket, error) {
 	}
 
 	return &exprFreqBucket{
+		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-freq",
 		bucketCommon: bc,
 		leak:         leak,
 		volume:       volume,
@@ -317,6 +321,7 @@ func (m stepVolume) name() string {
 }
 
 type exprFileRatioBucket struct {
+	_name string
 	index FileSizeIndex
 	bucketCommon
 	leak   float64
@@ -324,7 +329,7 @@ type exprFileRatioBucket struct {
 }
 
 func (expr *exprFileRatioBucket) name() string {
-	return "file-ratio-bucket-" + strconv.FormatUint(uint64(expr.prefix()), 10)
+	return expr._name
 }
 
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -482,6 +487,7 @@ func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) 
 	}
 
 	return &exprFileRatioBucket{
+		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-file-ratio",
 		index:        cb.re.fileSizeIndex,
 		bucketCommon: bc,
 		leak:         leak,
