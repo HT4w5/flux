@@ -1,3 +1,8 @@
+/*
+This package implements PrefixTrie and SuffixTrie for rule engine expressions.
+Trie is immutable once built and concurrent-safe.
+*/
+
 package trie
 
 type node[T any] struct {
