@@ -38,6 +38,14 @@ func (a exprAnd) match(ctx requestCtx, request *dto.Request) bool {
 	return true
 }
 
+func (cb *chainBuilder) buildExprAnd(value any) (expression, error) {
+	exprs, err := cb.buildExprList(value)
+	if err != nil {
+		return nil, fmt.Errorf("building AND expression: %w", err)
+	}
+	return exprAnd(exprs), nil
+}
+
 type exprOr []expression
 
 func (o exprOr) match(ctx requestCtx, request *dto.Request) bool {
@@ -49,206 +57,20 @@ func (o exprOr) match(ctx requestCtx, request *dto.Request) bool {
 	return false
 }
 
-type exprNot struct {
-	rule expression
-}
-
-func (n *exprNot) match(ctx requestCtx, request *dto.Request) bool {
-	return !n.rule.match(ctx, request)
-}
-
-// Time expressions
-
-type exprBefore struct {
-	time time.Time
-}
-
-func (bf *exprBefore) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.Before(bf.time)
-}
-
-type exprAfter struct {
-	time time.Time
-}
-
-func (af *exprAfter) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.After(af.time)
-}
-
-// IP address expressions
-
-type exprClientIPCIDR struct {
-	set netipx.IPSet
-}
-
-func (s *exprClientIPCIDR) match(ctx requestCtx, request *dto.Request) bool {
-	return s.set.Contains(request.Client)
-}
-
-type exprServerIPSet struct {
-	set netipx.IPSet
-}
-
-func (s *exprServerIPSet) match(ctx requestCtx, request *dto.Request) bool {
-	return s.set.Contains(request.Server)
-}
-
-// Method expressions
-
-type exprMethod string
-
-func (m exprMethod) match(ctx requestCtx, request *dto.Request) bool {
-	return m == exprMethod(request.Method)
-}
-
-// URL expressions
-
-type exprURL string
-
-func (u exprURL) match(ctx requestCtx, request *dto.Request) bool {
-	return u == exprURL(request.URL)
-}
-
-type exprURLSet map[string]struct{}
-
-func (us exprURLSet) match(ctx requestCtx, request *dto.Request) bool {
-	_, ok := us[request.URL]
-	return ok
-}
-
-type exprURLPrefix string
-
-func (up exprURLPrefix) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.HasPrefix(request.URL, string(up))
-}
-
-type exprURLSuffix string
-
-func (up exprURLSuffix) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.HasSuffix(request.URL, string(up))
-}
-
-type exprURLKeyword string
-
-func (uk exprURLKeyword) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.Contains(request.URL, string(uk))
-}
-
-type exprURLPrefixSet struct {
-	trie trie.Trie
-}
-
-func (ups exprURLPrefixSet) match(ctx requestCtx, request *dto.Request) bool {
-	return ups.trie.HasPrefixOf(request.URL)
-}
-
-// Status expressions
-
-type exprStatus int
-
-func (s exprStatus) match(ctx requestCtx, request *dto.Request) bool {
-	return s == exprStatus(request.Status)
-}
-
-type exprStatusClass int
-
-const (
-	Informational exprStatusClass = 1
-	Successful    exprStatusClass = 2
-	Redirection   exprStatusClass = 3
-	ClientError   exprStatusClass = 4
-	ServerError   exprStatusClass = 5
-)
-
-func (sc exprStatusClass) match(ctx requestCtx, request *dto.Request) bool {
-	return sc == exprStatusClass(request.Status/100)
-}
-
-// Sent expressions
-
-type exprSentMoreThan int64
-
-func (smt exprSentMoreThan) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Sent > int64(smt)
-}
-
-type exprSentLessThan int64
-
-func (slt exprSentLessThan) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Sent < int64(slt)
-}
-
-// Duration expressions
-
-type exprTookLongerThan time.Duration
-
-func (tlt exprTookLongerThan) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Duration > time.Duration(tlt)
-}
-
-type exprTookShorterThan time.Duration
-
-func (tst exprTookShorterThan) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Duration < time.Duration(tst)
-}
-
-// Host expressions
-
-type exprHost string
-
-func (h exprHost) match(ctx requestCtx, request *dto.Request) bool {
-	return h == exprHost(request.Host)
-}
-
-type exprHostSuffix string
-
-func (hs exprHostSuffix) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.HasSuffix(request.Host, string(hs))
-}
-
-type exprHostKeyword string
-
-func (hk exprHostKeyword) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.Contains(request.Host, string(hk))
-}
-
-// Agent expressions
-
-type exprAgent string
-
-func (a exprAgent) match(ctx requestCtx, request *dto.Request) bool {
-	return a == exprAgent(request.Agent)
-}
-
-type exprAgentKeyword string
-
-func (ak exprAgentKeyword) match(ctx requestCtx, request *dto.Request) bool {
-	return strings.Contains(request.Agent, string(ak))
-}
-
-type exprAgentSet map[string]struct{}
-
-func (as exprAgentSet) match(ctx requestCtx, request *dto.Request) bool {
-	_, ok := as[request.Agent]
-	return ok
-}
-
-// Builder methods for expressions
-
-func (cb *chainBuilder) buildExprAnd(value any) (expression, error) {
-	exprs, err := cb.buildExprList(value)
-	if err != nil {
-		return nil, fmt.Errorf("building AND expression: %w", err)
-	}
-	return exprAnd(exprs), nil
-}
-
 func (cb *chainBuilder) buildExprOr(value any) (expression, error) {
 	exprs, err := cb.buildExprList(value)
 	if err != nil {
 		return nil, fmt.Errorf("building OR expression: %w", err)
 	}
 	return exprOr(exprs), nil
+}
+
+type exprNot struct {
+	rule expression
+}
+
+func (n *exprNot) match(ctx requestCtx, request *dto.Request) bool {
+	return !n.rule.match(ctx, request)
 }
 
 func (cb *chainBuilder) buildExprNot(value any) (expression, error) {
@@ -265,6 +87,16 @@ func (cb *chainBuilder) buildExprNot(value any) (expression, error) {
 	return &exprNot{rule: expr}, nil
 }
 
+// Time expressions
+
+type exprBefore struct {
+	time time.Time
+}
+
+func (bf *exprBefore) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Time.Before(bf.time)
+}
+
 func buildExprBefore(value any) (expression, error) {
 	timeStr, ok := value.(string)
 	if !ok {
@@ -277,6 +109,14 @@ func buildExprBefore(value any) (expression, error) {
 	}
 
 	return &exprBefore{time: t}, nil
+}
+
+type exprAfter struct {
+	time time.Time
+}
+
+func (af *exprAfter) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Time.After(af.time)
 }
 
 func buildExprAfter(value any) (expression, error) {
@@ -293,12 +133,30 @@ func buildExprAfter(value any) (expression, error) {
 	return &exprAfter{time: t}, nil
 }
 
+// IP address expressions
+
+type exprClientIPCIDR struct {
+	set netipx.IPSet
+}
+
+func (s *exprClientIPCIDR) match(ctx requestCtx, request *dto.Request) bool {
+	return s.set.Contains(request.Client)
+}
+
 func buildExprClientIPCIDR(value any) (expression, error) {
 	ipSet, err := buildExprIPSet(value)
 	if err != nil {
 		return nil, fmt.Errorf("building CLIENT-IP-CIDR expression: %w", err)
 	}
 	return &exprClientIPCIDR{set: *ipSet}, nil
+}
+
+type exprServerIPSet struct {
+	set netipx.IPSet
+}
+
+func (s *exprServerIPSet) match(ctx requestCtx, request *dto.Request) bool {
+	return s.set.Contains(request.Server)
 }
 
 func buildExprServerIPSet(value any) (expression, error) {
@@ -309,33 +167,12 @@ func buildExprServerIPSet(value any) (expression, error) {
 	return &exprServerIPSet{set: *ipSet}, nil
 }
 
-func buildExprIPSet(value any) (*netipx.IPSet, error) {
-	items, ok := value.([]any)
-	if !ok {
-		return nil, fmt.Errorf("IP set expression expects a list, got %T", value)
-	}
+// Method expressions
 
-	builder := &netipx.IPSetBuilder{}
-	for i, item := range items {
-		itemStr, ok := item.(string)
-		if !ok {
-			return nil, fmt.Errorf("IP set item %d: expected string, got %T", i, item)
-		}
+type exprMethod string
 
-		if prefix, err := netip.ParsePrefix(itemStr); err == nil {
-			builder.AddPrefix(prefix)
-			continue
-		}
-
-		return nil, fmt.Errorf("IP set item %d: invalid CIDR: %s", i, itemStr)
-	}
-
-	ipSet, err := builder.IPSet()
-	if err != nil {
-		return nil, fmt.Errorf("building IP set: %w", err)
-	}
-
-	return ipSet, nil
+func (m exprMethod) match(ctx requestCtx, request *dto.Request) bool {
+	return m == exprMethod(request.Method)
 }
 
 func buildExprMethod(value any) (expression, error) {
@@ -346,12 +183,50 @@ func buildExprMethod(value any) (expression, error) {
 	return exprMethod(method), nil
 }
 
+// URL expressions
+
+type exprURL string
+
+func (u exprURL) match(ctx requestCtx, request *dto.Request) bool {
+	return u == exprURL(request.URL)
+}
+
 func buildExprURL(value any) (expression, error) {
 	url, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("URL expression expects a string, got %T", value)
 	}
 	return exprURL(url), nil
+}
+
+type exprURLSet map[string]struct{}
+
+func (us exprURLSet) match(ctx requestCtx, request *dto.Request) bool {
+	_, ok := us[request.URL]
+	return ok
+}
+
+func buildExprURLSet(value any) (expression, error) {
+	rawSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected an array, got %T", value)
+	}
+
+	m := make(map[string]struct{}, len(rawSlice))
+	for i, v := range rawSlice {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+		}
+		m[str] = struct{}{}
+	}
+	return exprURLSet(m), nil
+}
+
+type exprURLPrefix string
+
+func (up exprURLPrefix) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.HasPrefix(request.URL, string(up))
 }
 
 func buildExprURLPrefix(value any) (expression, error) {
@@ -362,6 +237,12 @@ func buildExprURLPrefix(value any) (expression, error) {
 	return exprURLPrefix(prefix), nil
 }
 
+type exprURLSuffix string
+
+func (up exprURLSuffix) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.HasSuffix(request.URL, string(up))
+}
+
 func buildExprURLSuffix(value any) (expression, error) {
 	suffix, ok := value.(string)
 	if !ok {
@@ -370,12 +251,26 @@ func buildExprURLSuffix(value any) (expression, error) {
 	return exprURLSuffix(suffix), nil
 }
 
+type exprURLKeyword string
+
+func (uk exprURLKeyword) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.Contains(request.URL, string(uk))
+}
+
 func buildExprURLKeyword(value any) (expression, error) {
 	keyword, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("URL-KEYWORD expression expects a string, got %T", value)
 	}
 	return exprURLKeyword(keyword), nil
+}
+
+type exprURLPrefixSet struct {
+	trie trie.Trie
+}
+
+func (ups exprURLPrefixSet) match(ctx requestCtx, request *dto.Request) bool {
+	return ups.trie.HasPrefixOf(request.URL)
 }
 
 func buildExprURLPrefixSet(value any) (expression, error) {
@@ -398,21 +293,12 @@ func buildExprURLPrefixSet(value any) (expression, error) {
 	}, nil
 }
 
-func buildExprURLSet(value any) (expression, error) {
-	rawSlice, ok := value.([]any)
-	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
-	}
+// Status expressions
 
-	m := make(map[string]struct{}, len(rawSlice))
-	for i, v := range rawSlice {
-		str, ok := v.(string)
-		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
-		}
-		m[str] = struct{}{}
-	}
-	return exprURLSet(m), nil
+type exprStatus int
+
+func (s exprStatus) match(ctx requestCtx, request *dto.Request) bool {
+	return s == exprStatus(request.Status)
 }
 
 func buildExprStatus(value any) (expression, error) {
@@ -434,6 +320,20 @@ func buildExprStatus(value any) (expression, error) {
 	default:
 		return nil, fmt.Errorf("STATUS expression expects an integer, got %T", value)
 	}
+}
+
+type exprStatusClass int
+
+const (
+	Informational exprStatusClass = 1
+	Successful    exprStatusClass = 2
+	Redirection   exprStatusClass = 3
+	ClientError   exprStatusClass = 4
+	ServerError   exprStatusClass = 5
+)
+
+func (sc exprStatusClass) match(ctx requestCtx, request *dto.Request) bool {
+	return sc == exprStatusClass(request.Status/100)
 }
 
 func buildExprStatusClass(value any) (expression, error) {
@@ -472,12 +372,26 @@ func buildExprStatusClass(value any) (expression, error) {
 	}
 }
 
+// Sent expressions
+
+type exprSentMoreThan int64
+
+func (smt exprSentMoreThan) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Sent > int64(smt)
+}
+
 func buildExprSentMoreThan(value any) (expression, error) {
 	sent, err := parseExprByteSize(value)
 	if err != nil {
 		return nil, fmt.Errorf("building SENT-MORE-THAN expression: %w", err)
 	}
 	return exprSentMoreThan(sent), nil
+}
+
+type exprSentLessThan int64
+
+func (slt exprSentLessThan) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Sent < int64(slt)
 }
 
 func buildExprSentLessThan(value any) (expression, error) {
@@ -488,12 +402,26 @@ func buildExprSentLessThan(value any) (expression, error) {
 	return exprSentLessThan(sent), nil
 }
 
+// Duration expressions
+
+type exprTookLongerThan time.Duration
+
+func (tlt exprTookLongerThan) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Duration > time.Duration(tlt)
+}
+
 func buildExprTookLongerThan(value any) (expression, error) {
 	duration, err := parseExprDuration(value)
 	if err != nil {
 		return nil, fmt.Errorf("building TOOK-LONGER-THAN expression: %w", err)
 	}
 	return exprTookLongerThan(duration), nil
+}
+
+type exprTookShorterThan time.Duration
+
+func (tst exprTookShorterThan) match(ctx requestCtx, request *dto.Request) bool {
+	return request.Duration < time.Duration(tst)
 }
 
 func buildExprTookShorterThan(value any) (expression, error) {
@@ -504,12 +432,26 @@ func buildExprTookShorterThan(value any) (expression, error) {
 	return exprTookShorterThan(duration), nil
 }
 
+// Host expressions
+
+type exprHost string
+
+func (h exprHost) match(ctx requestCtx, request *dto.Request) bool {
+	return h == exprHost(request.Host)
+}
+
 func buildExprHost(value any) (expression, error) {
 	host, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("HOST expression expects a string, got %T", value)
 	}
 	return exprHost(host), nil
+}
+
+type exprHostSuffix string
+
+func (hs exprHostSuffix) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.HasSuffix(request.Host, string(hs))
 }
 
 func buildExprHostSuffix(value any) (expression, error) {
@@ -520,12 +462,26 @@ func buildExprHostSuffix(value any) (expression, error) {
 	return exprHostSuffix(suffix), nil
 }
 
+type exprHostKeyword string
+
+func (hk exprHostKeyword) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.Contains(request.Host, string(hk))
+}
+
 func buildExprHostKeyword(value any) (expression, error) {
 	keyword, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("HOST-KEYWORD expression expects a string, got %T", value)
 	}
 	return exprHostKeyword(keyword), nil
+}
+
+// Agent expressions
+
+type exprAgent string
+
+func (a exprAgent) match(ctx requestCtx, request *dto.Request) bool {
+	return a == exprAgent(request.Agent)
 }
 
 func buildExprAgent(value any) (expression, error) {
@@ -536,12 +492,25 @@ func buildExprAgent(value any) (expression, error) {
 	return exprAgent(agent), nil
 }
 
+type exprAgentKeyword string
+
+func (ak exprAgentKeyword) match(ctx requestCtx, request *dto.Request) bool {
+	return strings.Contains(request.Agent, string(ak))
+}
+
 func buildExprAgentKeyword(value any) (expression, error) {
 	keyword, ok := value.(string)
 	if !ok {
 		return nil, fmt.Errorf("AGENT-KEYWORD expression expects a string, got %T", value)
 	}
 	return exprAgentKeyword(keyword), nil
+}
+
+type exprAgentSet map[string]struct{}
+
+func (as exprAgentSet) match(ctx requestCtx, request *dto.Request) bool {
+	_, ok := as[request.Agent]
+	return ok
 }
 
 func buildExprAgentSet(value any) (expression, error) {
@@ -562,6 +531,35 @@ func buildExprAgentSet(value any) (expression, error) {
 }
 
 // Helper functions
+
+func buildExprIPSet(value any) (*netipx.IPSet, error) {
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("IP set expression expects a list, got %T", value)
+	}
+
+	builder := &netipx.IPSetBuilder{}
+	for i, item := range items {
+		itemStr, ok := item.(string)
+		if !ok {
+			return nil, fmt.Errorf("IP set item %d: expected string, got %T", i, item)
+		}
+
+		if prefix, err := netip.ParsePrefix(itemStr); err == nil {
+			builder.AddPrefix(prefix)
+			continue
+		}
+
+		return nil, fmt.Errorf("IP set item %d: invalid CIDR: %s", i, itemStr)
+	}
+
+	ipSet, err := builder.IPSet()
+	if err != nil {
+		return nil, fmt.Errorf("building IP set: %w", err)
+	}
+
+	return ipSet, nil
+}
 
 func (cb *chainBuilder) buildExprList(value any) ([]expression, error) {
 	items, ok := value.([]any)
