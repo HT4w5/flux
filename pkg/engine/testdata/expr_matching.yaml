@@ -58,6 +58,45 @@
     statement:
       BAN: 1h
 
+- name: expr-url-suffix-set
+  rules:
+  - expressions:
+    - URL-SUFFIX-SET:
+      - .tar.gz
+      - .zip
+      - .db
+    statement:
+      BAN: 1h
+
+- name: expr-url-suffix-map
+  rules:
+  - expressions:
+    - URL-SUFFIX-MAP:
+      - .zip: ALL
+      - .tar.gz: NONE
+      - .gz: ALL
+    statement:
+      BAN: 1h
+
+- name: expr-url-prefix-map
+  rules:
+  - expressions:
+    - URL-PREFIX-MAP:
+      - /admin: ALL
+      - /admin/login: NONE
+      - /auth: ALL
+    statement:
+      BAN: 1h
+
+- name: expr-url-map
+  rules:
+  - expressions:
+    - URL-MAP:
+      - /admin: ALL
+      - /auth: NONE
+    statement:
+      BAN: 1h
+
 - name: expr-url-suffix
   rules:
   - expressions:

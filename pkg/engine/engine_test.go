@@ -254,6 +254,29 @@ func TestExpressionMatching(t *testing.T) {
 		{"expr-url-set", newRequest(addr10, withURL("/.well-kn")), 0, "URL-SET mismatch"},
 		{"expr-url-set", newRequest(addr10, withURL("/.well-known/geodata.json")), 0, "URL-SET mismatch"},
 
+		{"expr-url-map", newRequest(addr10, withURL("/admin")), 1, "URL-MAP mismatch"},
+		{"expr-url-map", newRequest(addr10, withURL("/auth")), 0, "URL-MAP mismatch"},
+		{"expr-url-map", newRequest(addr10, withURL("/admin/login")), 0, "URL-MAP mismatch"},
+
+		{"expr-url-suffix-set", newRequest(addr10, withURL("/foo/bar.tar.gz")), 1, "URL-SUFFIX-SET mismatch"},
+		{"expr-url-suffix-set", newRequest(addr10, withURL("/foo/bar.zip")), 1, "URL-SUFFIX-SET mismatch"},
+		{"expr-url-suffix-set", newRequest(addr10, withURL("/foo/bar.db")), 1, "URL-SUFFIX-SET mismatch"},
+		{"expr-url-suffix-set", newRequest(addr10, withURL("/foo/bar.iso")), 0, "URL-SUFFIX-SET mismatch"},
+		{"expr-url-suffix-set", newRequest(addr10, withURL("/foo/bar.gz")), 0, "URL-SUFFIX-SET mismatch"},
+
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.zip")), 1, "URL-SUFFIX-MAP mismatch"},
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.iso")), 0, "URL-SUFFIX-MAP mismatch"},
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.tar.gz")), 0, "URL-SUFFIX-MAP mismatch"},
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.gz")), 1, "URL-SUFFIX-MAP mismatch"},
+
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin")), 1, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin/log")), 1, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin/login")), 0, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin/login/foo/bar")), 0, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/.well-known")), 0, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/auth")), 1, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/au")), 0, "URL-PREFIX-MAP mismatch"},
+
 		// STATUS / STATUS-CLASS
 		{"expr-status-class-4xx", newRequest(addr10, withStatus(404)), 1, "STATUS-CLASS 4xx"},
 		{"expr-status-class-4xx", newRequest(addr10, withStatus(200)), 0, "STATUS-CLASS 4xx — 200 should not"},
