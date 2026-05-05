@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/HT4w5/trie"
+	"github.com/HT4w5/flux/pkg/trie"
 	"github.com/docker/go-units"
 	"go4.org/netipx"
 )
@@ -266,11 +266,12 @@ func buildExprURLKeyword(value any) (expression, error) {
 }
 
 type exprURLPrefixSet struct {
-	trie trie.Trie
+	trie trie.PrefixTrie[struct{}]
 }
 
 func (ups exprURLPrefixSet) match(ctx requestCtx, request *dto.Request) bool {
-	return ups.trie.HasPrefixOf(request.URL)
+	_, ok := ups.trie.LongestPrefixMatch(request.URL)
+	return ok
 }
 
 func buildExprURLPrefixSet(value any) (expression, error) {
@@ -279,17 +280,167 @@ func buildExprURLPrefixSet(value any) (expression, error) {
 		return nil, fmt.Errorf("expected an array, got %T", value)
 	}
 
-	prefixes := make([]string, len(rawSlice))
+	tb := trie.NewPrefixTrieBuilder[struct{}]()
 	for i, v := range rawSlice {
 		str, ok := v.(string)
 		if !ok {
 			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
 		}
-		prefixes[i] = str
+		tb.Add(str, struct{}{})
 	}
 
 	return exprURLPrefixSet{
-		trie: trie.New(prefixes),
+		trie: tb.Build(),
+	}, nil
+}
+
+type exprURLSuffixSet struct {
+	trie trie.SuffixTrie[struct{}]
+}
+
+func (ups exprURLSuffixSet) match(ctx requestCtx, request *dto.Request) bool {
+	_, ok := ups.trie.LongestSuffixMatch(request.URL)
+	return ok
+}
+
+func buildExprURLSuffixSet(value any) (expression, error) {
+	rawSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected an array, got %T", value)
+	}
+
+	tb := trie.NewSuffixTrieBuilder[struct{}]()
+	for i, v := range rawSlice {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+		}
+		tb.Add(str, struct{}{})
+	}
+
+	return exprURLSuffixSet{
+		trie: tb.Build(),
+	}, nil
+}
+
+type exprURLMap map[string]expression
+
+func (us exprURLMap) match(ctx requestCtx, request *dto.Request) bool {
+	expr, ok := us[request.URL]
+	if !ok {
+		return false
+	}
+	return expr.match(ctx, request)
+}
+
+func (cb *chainBuilder) buildExprURLMap(value any) (expression, error) {
+	rawSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected an array, got %T", value)
+	}
+
+	mm := make(map[string]expression, len(rawSlice))
+	for i, v := range rawSlice {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+		}
+		if len(m) != 1 {
+			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+		}
+
+		for k, v := range m {
+			expr, err := cb.buildExpression(v)
+			if err != nil {
+				return nil, err
+			}
+			mm[k] = expr
+		}
+	}
+	return exprURLMap(mm), nil
+}
+
+type exprURLPrefixMap struct {
+	trie trie.PrefixTrie[expression]
+}
+
+func (upm exprURLPrefixMap) match(ctx requestCtx, request *dto.Request) bool {
+	expr, ok := upm.trie.LongestPrefixMatch(request.URL)
+	if !ok {
+		return false
+	}
+	return expr.match(ctx, request)
+}
+
+func (cb *chainBuilder) buildExprURLPrefixMap(value any) (expression, error) {
+	rawSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected an array, got %T", value)
+	}
+
+	tb := trie.NewPrefixTrieBuilder[expression]()
+	for i, v := range rawSlice {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+		}
+		if len(m) != 1 {
+			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+		}
+
+		for k, v := range m {
+			expr, err := cb.buildExpression(v)
+			if err != nil {
+				return nil, err
+			}
+			tb.Add(k, expr)
+		}
+	}
+
+	return exprURLPrefixMap{
+		trie: tb.Build(),
+	}, nil
+}
+
+type exprURLSuffixMap struct {
+	trie trie.SuffixTrie[expression]
+}
+
+func (upm exprURLSuffixMap) match(ctx requestCtx, request *dto.Request) bool {
+	expr, ok := upm.trie.LongestSuffixMatch(request.URL)
+	if !ok {
+		return false
+	}
+	return expr.match(ctx, request)
+}
+
+func (cb *chainBuilder) buildExprURLSuffixMap(value any) (expression, error) {
+	rawSlice, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("expected an array, got %T", value)
+	}
+
+	tb := trie.NewSuffixTrieBuilder[expression]()
+	for i, v := range rawSlice {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+		}
+		if len(m) != 1 {
+			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+		}
+
+		for k, v := range m {
+			expr, err := cb.buildExpression(v)
+			if err != nil {
+				return nil, err
+			}
+			tb.Add(k, expr)
+		}
+	}
+
+	return exprURLSuffixMap{
+		trie: tb.Build(),
 	}, nil
 }
 

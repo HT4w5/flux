@@ -95,7 +95,7 @@ func (cb *chainBuilder) buildExpression(expr any) (expression, error) {
 			return nil, fmt.Errorf("unknown expression string: %s", v)
 		}
 	default:
-		return nil, fmt.Errorf("expected string or map, got %T", expr)
+		return nil, fmt.Errorf("buildExpression: expected string or map, got %T", expr)
 	case map[string]any:
 		if len(v) != 1 {
 			return nil, fmt.Errorf("expected exactly one key in expression map, got %d", len(v))
@@ -145,6 +145,14 @@ func (cb *chainBuilder) buildExpression(expr any) (expression, error) {
 				return buildExprURLSet(value)
 			case "URL-PREFIX-SET":
 				return buildExprURLPrefixSet(value)
+			case "URL-SUFFIX-SET":
+				return buildExprURLSuffixSet(value)
+			case "URL-MAP":
+				return cb.buildExprURLMap(value)
+			case "URL-PREFIX-MAP":
+				return cb.buildExprURLPrefixMap(value)
+			case "URL-SUFFIX-MAP":
+				return cb.buildExprURLSuffixMap(value)
 
 			// Status expressions
 			case "STATUS":
@@ -225,7 +233,7 @@ func (cb *chainBuilder) buildStatement(chainMap map[string]chain, stmt any) (sta
 			return nil, fmt.Errorf("unknown statement string: %s", v)
 		}
 	default:
-		return nil, fmt.Errorf("expected string or map, got %T", stmt)
+		return nil, fmt.Errorf("buildStatement: expected string or map, got %T", stmt)
 	case map[string]any:
 		if len(v) != 1 {
 			return nil, fmt.Errorf("expected exactly one key in statement map, got %d", len(v))
