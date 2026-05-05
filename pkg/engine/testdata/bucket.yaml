@@ -46,3 +46,27 @@
     - FILE-RATIO-BUCKET: "0.1,constant,5" # 0.1 files/s, 5 files threshold
     statement:
       BAN: 15m
+
+# File ratio bucket with clamped-linear volume
+- name: bucket-file-ratio-clamped-linear
+  rules:
+  - expressions:
+    - FILE-RATIO-BUCKET: "0.1,clamped-linear,10,-1,5,9"
+    statement:
+      BAN: 15m
+
+# File ratio bucket with inverse-square volume
+- name: bucket-file-ratio-inverse-square
+  rules:
+  - expressions:
+    - FILE-RATIO-BUCKET: "0.1,inverse-square,5,100MB"
+    statement:
+      BAN: 15m
+
+# File ratio bucket with step volume
+- name: bucket-file-ratio-step
+  rules:
+  - expressions:
+    - FILE-RATIO-BUCKET: "0.1,step,30MB,100,5"
+    statement:
+      BAN: 15m
