@@ -593,7 +593,28 @@ func parseExprByteSize(value any) (int64, error) {
 	case float64:
 		return int64(v), nil
 	case string:
-		return units.FromHumanSize(string(v))
+		return units.FromHumanSize(v)
+	default:
+		return 0, fmt.Errorf("expected byte size, got %v", value)
+	}
+}
+
+func parseExprFloatByteSize(value any) (float64, error) {
+	switch v := value.(type) {
+	case int:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case uint64:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	case string:
+		s, err := units.FromHumanSize(v)
+		if err != nil {
+			return 0, err
+		}
+		return float64(s), nil
 	default:
 		return 0, fmt.Errorf("expected byte size, got %v", value)
 	}

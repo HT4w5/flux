@@ -1,0 +1,229 @@
+# Expression matching test chains
+
+- name: expr-all
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 15m
+
+- name: expr-none
+  rules:
+  - expressions:
+    - NONE
+    statement:
+      BAN: 30m
+  - expressions:
+    - ALL
+    statement:
+      BAN: 45m
+
+- name: expr-method-get
+  rules:
+  - expressions:
+    - METHOD: GET
+    statement:
+      BAN: 1h
+
+- name: expr-method-post
+  rules:
+  - expressions:
+    - METHOD: POST
+    statement:
+      BAN: 1h
+
+- name: expr-url-exact
+  rules:
+  - expressions:
+    - URL: /admin/login
+    statement:
+      BAN: 1h
+
+- name: expr-url-prefix
+  rules:
+  - expressions:
+    - URL-PREFIX: /admin/
+    statement:
+      BAN: 1h
+
+- name: expr-url-prefix-set
+  rules:
+  - expressions:
+    - URL-PREFIX-SET:
+      - /admin
+      - /api
+      - /.well-known
+      - /static
+      - /admin/login
+    statement:
+      BAN: 1h
+
+- name: expr-url-suffix
+  rules:
+  - expressions:
+    - URL-SUFFIX: .php
+    statement:
+      BAN: 1h
+
+- name: expr-url-keyword
+  rules:
+  - expressions:
+    - URL-KEYWORD: login
+    statement:
+      BAN: 1h
+
+- name: expr-url-set
+  rules:
+  - expressions:
+    - URL-SET:
+      - /admin
+      - /api
+      - /.well-known
+      - /static
+      - /admin/login
+    statement:
+      BAN: 1h
+
+- name: expr-status-class-4xx
+  rules:
+  - expressions:
+    - STATUS-CLASS: 4
+    statement:
+      BAN: 1h
+
+- name: expr-status-404
+  rules:
+  - expressions:
+    - STATUS: 404
+    statement:
+      BAN: 1h
+
+- name: expr-host-exact
+  rules:
+  - expressions:
+    - HOST: evil.example.com
+    statement:
+      BAN: 1h
+
+- name: expr-host-suffix
+  rules:
+  - expressions:
+    - HOST-SUFFIX: .bad.net
+    statement:
+      BAN: 1h
+
+- name: expr-host-keyword
+  rules:
+  - expressions:
+    - HOST-KEYWORD: bogus
+    statement:
+      BAN: 1h
+
+- name: expr-agent-exact
+  rules:
+  - expressions:
+    - AGENT: BadBot/1.0
+    statement:
+      BAN: 1h
+
+- name: expr-agent-keyword
+  rules:
+  - expressions:
+    - AGENT-KEYWORD: BadBot
+    statement:
+      BAN: 1h
+
+- name: expr-agent-set
+  rules:
+  - expressions:
+    - AGENT-SET:
+      - BadBot
+      - BadBot/1.0
+      - Spider
+      - Mozilla/5.0
+    statement:
+      BAN: 1h
+
+- name: expr-sent-more-than
+  rules:
+  - expressions:
+    - SENT-MORE-THAN: 10000
+    statement:
+      BAN: 1h
+
+- name: expr-sent-less-than
+  rules:
+  - expressions:
+    - SENT-LESS-THAN: 4096
+    statement:
+      BAN: 1h
+
+- name: expr-took-longer-than
+  rules:
+  - expressions:
+    - TOOK-LONGER-THAN: 5s
+    statement:
+      BAN: 1h
+
+- name: expr-took-shorter-than
+  rules:
+  - expressions:
+    - TOOK-SHORTER-THAN: 100ms
+    statement:
+      BAN: 1h
+
+- name: expr-and
+  rules:
+  - expressions:
+    - AND:
+      - METHOD: POST
+      - URL-PREFIX: /api/
+    statement:
+      BAN: 1h
+
+- name: expr-or
+  rules:
+  - expressions:
+    - OR:
+      - STATUS: 404
+      - STATUS: 500
+    statement:
+      BAN: 1h
+
+- name: expr-not
+  rules:
+  - expressions:
+    - NOT:
+        METHOD: GET
+    statement:
+      BAN: 1h
+
+- name: expr-client-ip-cidr
+  rules:
+  - expressions:
+    - CLIENT-IP-CIDR:
+      - 10.0.0.0/8
+    statement:
+      BAN: 1h
+
+- name: expr-server-ip-cidr
+  rules:
+  - expressions:
+    - SERVER-IP-CIDR:
+      - 172.16.0.0/12
+    statement:
+      BAN: 1h
+
+- name: expr-before
+  rules:
+  - expressions:
+    - BEFORE: "2025-01-01T00:00:00Z"
+    statement:
+      BAN: 1h
+
+- name: expr-after
+  rules:
+  - expressions:
+    - AFTER: "2025-01-01T00:00:00Z"
+    statement:
+      BAN: 1h

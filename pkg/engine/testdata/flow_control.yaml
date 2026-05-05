@@ -1,0 +1,103 @@
+# Flow control test chains
+# Sub-chains (GOTO/JUMP targets) MUST appear before the chains that reference them
+# because the chain builder resolves references in parse order.
+
+- name: flow-stop
+  rules:
+  - expressions:
+    - ALL
+    statement: STOP
+  - expressions:
+    - ALL
+    statement:
+      LOG: "error,STOP_DID_NOT_STOP"
+
+- name: flow-continue
+  rules:
+  - expressions:
+    - ALL
+    statement: CONTINUE
+  - expressions:
+    - ALL
+    statement:
+      BAN: 30m
+
+# Sub-chains for GOTO tests
+- name: flow-goto-sub
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 45m
+
+- name: flow-jump-sub
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 20m
+
+- name: flow-goto-early-sub
+  rules:
+  - expressions:
+    - ALL
+    statement: STOP
+  - expressions:
+    - ALL
+    statement:
+      BAN: 99h
+
+- name: flow-jcc-sub1
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 10m
+
+- name: flow-jcc-sub2
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 20m
+
+# Chains that reference the sub-chains above
+- name: flow-goto
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      GOTO: flow-goto-sub
+  - expressions:
+    - ALL
+    statement:
+      LOG: "error,GOTO_DID_NOT_STOP"
+
+- name: flow-jump
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      JUMP: flow-jump-sub
+  - expressions:
+    - ALL
+    statement:
+      BAN: 1h
+
+- name: flow-goto-early-stop
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      GOTO: flow-goto-early-sub
+
+- name: flow-jump-chain-continue
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      JUMP: flow-jcc-sub1
+  - expressions:
+    - ALL
+    statement:
+      JUMP: flow-jcc-sub2

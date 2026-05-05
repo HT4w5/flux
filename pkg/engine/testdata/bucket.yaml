@@ -1,0 +1,48 @@
+# Bucket test chains
+# Byte bucket: leak=0, small volume => first request passes, second overflows
+- name: bucket-byte
+  rules:
+  - expressions:
+    - BYTE-BUCKET: "0,1024"
+    statement:
+      BAN: 15m
+
+# Freq bucket: leak=0, volume=2 => third request triggers ban
+- name: bucket-freq
+  rules:
+  - expressions:
+    - FREQ-BUCKET: "0,2"
+    statement:
+      BAN: 15m
+
+# File ratio bucket: leak=0, volume=0.5
+- name: bucket-file-ratio
+  rules:
+  - expressions:
+    - FILE-RATIO-BUCKET: "0,constant,0.5"
+    statement:
+      BAN: 15m
+
+# Byte bucket with leak
+- name: bucket-byte-leak
+  rules:
+  - expressions:
+    - BYTE-BUCKET: "512,2048" # 512 B/s, 2048 B threshold
+    statement:
+      BAN: 15m
+
+# Freq bucket with leak
+- name: bucket-freq-leak
+  rules:
+  - expressions:
+    - FREQ-BUCKET: "1,4" # 1 r/s, 4 r threshold
+    statement:
+      BAN: 15m
+
+# File ratio bucket with leak
+- name: bucket-file-ratio-leak
+  rules:
+  - expressions:
+    - FILE-RATIO-BUCKET: "0.1,constant,5" # 0.1 files/s, 5 files threshold
+    statement:
+      BAN: 15m

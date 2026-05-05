@@ -1,0 +1,81 @@
+# Ban and Log statement test chains
+
+# BAN with 30 minute duration
+- name: ban-30m
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 30m
+
+# BAN with 2 hour duration
+- name: ban-2h
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 2h
+
+# BAN with 1h30m duration
+- name: ban-90m
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 1h30m
+
+# LOG debug level
+- name: log-debug
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      LOG: "debug,DEBUG_TEST:"
+
+# LOG info level
+- name: log-info
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      LOG: "info,INFO_TEST:"
+
+# LOG warn level
+- name: log-warn
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      LOG: "warn,WARN_TEST:"
+
+# LOG error level
+- name: log-error
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      LOG: "error,ERROR_TEST:"
+
+# BAN followed by LOG (BAN is terminal, LOG should not fire)
+- name: ban-then-log
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      BAN: 1h
+  - expressions:
+    - ALL
+    statement:
+      LOG: "error,BAN_DID_NOT_STOP:"
+
+# LOG then BAN (LOG is not terminal, BAN should fire)
+- name: log-then-ban
+  rules:
+  - expressions:
+    - ALL
+    statement:
+      LOG: "info,LOG_PRECEDES_BAN:"
+  - expressions:
+    - ALL
+    statement:
+      BAN: 45m

@@ -1,5 +1,6 @@
 .vscode
-*.yaml
+config*.yaml
 !*.example.yaml
 *.db
 bin
+*.txt

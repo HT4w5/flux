@@ -32,9 +32,10 @@ type FreqBucketEntryDump struct {
 }
 
 type FileRatioBucketDump struct {
-	Name       string                                         `json:"name"`
-	EntryCount int                                            `json:"entry_count"`
-	Entries    map[string]map[string]FileRatioBucketEntryDump `json:"entries"`
+	Name         string                                         `json:"name"`
+	VolumeMethod string                                         `json:"volume_method"`
+	EntryCount   int                                            `json:"entry_count"`
+	Entries      map[string]map[string]FileRatioBucketEntryDump `json:"entries"`
 }
 
 type FileRatioBucketEntryDump struct {
@@ -49,21 +50,22 @@ func (re *RuleEngine) DumpCache() CacheDump {
 	fileRatioBuckets := make(map[byte]FileRatioBucketDump)
 
 	for _, b := range re.bucketMap {
-		switch b.bucketType() {
-		case byteBucket:
+		switch v := b.(type) {
+		case *exprByteBucket:
 			byteBuckets[b.prefix()] = ByteBucketDump{
 				Name:    b.name(),
 				Entries: make(map[string]ByteBucketEntryDump),
 			}
-		case freqBucket:
+		case *exprFreqBucket:
 			freqBuckets[b.prefix()] = FreqBucketDump{
 				Name:    b.name(),
 				Entries: make(map[string]FreqBucketEntryDump),
 			}
-		case fileRatioBucket:
+		case *exprFileRatioBucket:
 			fileRatioBuckets[b.prefix()] = FileRatioBucketDump{
-				Name:    b.name(),
-				Entries: make(map[string]map[string]FileRatioBucketEntryDump),
+				Name:         b.name(),
+				VolumeMethod: v.volume.name(),
+				Entries:      make(map[string]map[string]FileRatioBucketEntryDump),
 			}
 		}
 	}
@@ -85,10 +87,8 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			continue
 		}
 
-		bucketType := re.bucketMap[k[0]].bucketType()
-
-		switch bucketType {
-		case byteBucket:
+		switch re.bucketMap[k[0]].(type) {
+		case *exprByteBucket:
 			if len(k) < 17 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
@@ -106,7 +106,7 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			bkt.EntryCount++
 
 			byteBuckets[k[0]] = bkt
-		case freqBucket:
+		case *exprFreqBucket:
 			if len(k) < 17 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
@@ -124,7 +124,7 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			bkt.EntryCount++
 
 			freqBuckets[k[0]] = bkt
-		case fileRatioBucket:
+		case *exprFileRatioBucket:
 			if len(k) < 17 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
