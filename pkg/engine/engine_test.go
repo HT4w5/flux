@@ -254,6 +254,7 @@ func TestExpressionMatching(t *testing.T) {
 		{"expr-url-set", newRequest(addr10, withURL("/.well-kn")), 0, "URL-SET mismatch"},
 		{"expr-url-set", newRequest(addr10, withURL("/.well-known/geodata.json")), 0, "URL-SET mismatch"},
 
+		{"expr-url-map", newRequest(addr10, withURL("/api")), 1, "URL-MAP mismatch"},
 		{"expr-url-map", newRequest(addr10, withURL("/admin")), 1, "URL-MAP mismatch"},
 		{"expr-url-map", newRequest(addr10, withURL("/auth")), 0, "URL-MAP mismatch"},
 		{"expr-url-map", newRequest(addr10, withURL("/admin/login")), 0, "URL-MAP mismatch"},
@@ -268,6 +269,8 @@ func TestExpressionMatching(t *testing.T) {
 		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.iso")), 0, "URL-SUFFIX-MAP mismatch"},
 		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.tar.gz")), 0, "URL-SUFFIX-MAP mismatch"},
 		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.gz")), 1, "URL-SUFFIX-MAP mismatch"},
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.xml")), 1, "URL-SUFFIX-MAP mismatch"},
+		{"expr-url-suffix-map", newRequest(addr10, withURL("/foo/bar.json")), 1, "URL-SUFFIX-MAP mismatch"},
 
 		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin")), 1, "URL-PREFIX-MAP mismatch"},
 		{"expr-url-prefix-map", newRequest(addr10, withURL("/admin/log")), 1, "URL-PREFIX-MAP mismatch"},
@@ -276,6 +279,8 @@ func TestExpressionMatching(t *testing.T) {
 		{"expr-url-prefix-map", newRequest(addr10, withURL("/.well-known")), 0, "URL-PREFIX-MAP mismatch"},
 		{"expr-url-prefix-map", newRequest(addr10, withURL("/auth")), 1, "URL-PREFIX-MAP mismatch"},
 		{"expr-url-prefix-map", newRequest(addr10, withURL("/au")), 0, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/api")), 1, "URL-PREFIX-MAP mismatch"},
+		{"expr-url-prefix-map", newRequest(addr10, withURL("/static/1.jpeg")), 1, "URL-PREFIX-MAP mismatch"},
 
 		// STATUS / STATUS-CLASS
 		{"expr-status-class-4xx", newRequest(addr10, withStatus(404)), 1, "STATUS-CLASS 4xx"},
@@ -364,7 +369,7 @@ func TestExpressionMatching(t *testing.T) {
 			defer re.Shutdown()
 
 			ch <- tt.req
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 
 			if got := jail.banCount(); got != tt.wantBans {
 				t.Errorf("bans: got %d, want %d", got, tt.wantBans)

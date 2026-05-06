@@ -209,14 +209,14 @@ func (us exprURLSet) match(ctx requestCtx, request *dto.Request) bool {
 func buildExprURLSet(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-SET: expected an array, got %T", value)
 	}
 
 	m := make(map[string]struct{}, len(rawSlice))
 	for i, v := range rawSlice {
 		str, ok := v.(string)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+			return nil, fmt.Errorf("URL-SET: element at index %d is not a string: %T", i, v)
 		}
 		m[str] = struct{}{}
 	}
@@ -277,14 +277,14 @@ func (ups exprURLPrefixSet) match(ctx requestCtx, request *dto.Request) bool {
 func buildExprURLPrefixSet(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-PREFIX-SET: expected an array, got %T", value)
 	}
 
 	tb := trie.NewPrefixTrieBuilder[struct{}]()
 	for i, v := range rawSlice {
 		str, ok := v.(string)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+			return nil, fmt.Errorf("URL-PREFIX-SET: element at index %d is not a string: %T", i, v)
 		}
 		tb.Add(str, struct{}{})
 	}
@@ -306,14 +306,14 @@ func (ups exprURLSuffixSet) match(ctx requestCtx, request *dto.Request) bool {
 func buildExprURLSuffixSet(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-SUFFIX-SET: expected an array, got %T", value)
 	}
 
 	tb := trie.NewSuffixTrieBuilder[struct{}]()
 	for i, v := range rawSlice {
 		str, ok := v.(string)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a string: %T", i, v)
+			return nil, fmt.Errorf("URL-SUFFIX-SET: element at index %d is not a string: %T", i, v)
 		}
 		tb.Add(str, struct{}{})
 	}
@@ -336,27 +336,43 @@ func (us exprURLMap) match(ctx requestCtx, request *dto.Request) bool {
 func (cb *chainBuilder) buildExprURLMap(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-MAP: expected an array, got %T", value)
 	}
 
 	mm := make(map[string]expression, len(rawSlice))
+	var fallthroughGroup []string
+CaseLoop:
 	for i, v := range rawSlice {
 		m, ok := v.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+			return nil, fmt.Errorf("URL-MAP: element at index %d is not a map[string]any: %T", i, v)
 		}
 		if len(m) != 1 {
-			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+			return nil, fmt.Errorf("URL-MAP: expected exactly one key in map entry, got %d", len(m))
 		}
 
 		for k, v := range m {
+			fallthroughGroup = append(fallthroughGroup, k)
+			if v == nil {
+				continue CaseLoop
+			}
+
 			expr, err := cb.buildExpression(v)
 			if err != nil {
 				return nil, err
 			}
-			mm[k] = expr
+
+			for _, str := range fallthroughGroup {
+				mm[str] = expr
+			}
 		}
+		fallthroughGroup = fallthroughGroup[:0]
 	}
+
+	if len(fallthroughGroup) != 0 {
+		return nil, fmt.Errorf("URL-MAP: ending case should not fallthrough")
+	}
+
 	return exprURLMap(mm), nil
 }
 
@@ -375,26 +391,41 @@ func (upm exprURLPrefixMap) match(ctx requestCtx, request *dto.Request) bool {
 func (cb *chainBuilder) buildExprURLPrefixMap(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-PREFIX-MAP: expected an array, got %T", value)
 	}
 
 	tb := trie.NewPrefixTrieBuilder[expression]()
+	var fallthroughGroup []string
+CaseLoop:
 	for i, v := range rawSlice {
 		m, ok := v.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+			return nil, fmt.Errorf("URL-PREFIX-MAP: element at index %d is not a map[string]any: %T", i, v)
 		}
 		if len(m) != 1 {
-			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+			return nil, fmt.Errorf("URL-PREFIX-MAP: expected exactly one key in map entry, got %d", len(m))
 		}
 
 		for k, v := range m {
+			fallthroughGroup = append(fallthroughGroup, k)
+			if v == nil {
+				continue CaseLoop
+			}
+
 			expr, err := cb.buildExpression(v)
 			if err != nil {
 				return nil, err
 			}
-			tb.Add(k, expr)
+
+			for _, str := range fallthroughGroup {
+				tb.Add(str, expr)
+			}
 		}
+		fallthroughGroup = fallthroughGroup[:0]
+	}
+
+	if len(fallthroughGroup) != 0 {
+		return nil, fmt.Errorf("URL-PREFIX-MAP: ending case should not fallthrough")
 	}
 
 	return exprURLPrefixMap{
@@ -417,26 +448,39 @@ func (upm exprURLSuffixMap) match(ctx requestCtx, request *dto.Request) bool {
 func (cb *chainBuilder) buildExprURLSuffixMap(value any) (expression, error) {
 	rawSlice, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("expected an array, got %T", value)
+		return nil, fmt.Errorf("URL-SUFFIX-MAP: expected an array, got %T", value)
 	}
 
 	tb := trie.NewSuffixTrieBuilder[expression]()
+	var fallthroughGroup []string
+CaseLoop:
 	for i, v := range rawSlice {
 		m, ok := v.(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("element at index %d is not a map[string]any: %T", i, v)
+			return nil, fmt.Errorf("URL-SUFFIX-MAP: element at index %d is not a map[string]any: %T", i, v)
 		}
 		if len(m) != 1 {
-			return nil, fmt.Errorf("expected exactly one key in map entry, got %d", len(m))
+			return nil, fmt.Errorf("URL-SUFFIX-MAP: expected exactly one key in map entry, got %d", len(m))
 		}
 
 		for k, v := range m {
+			fallthroughGroup = append(fallthroughGroup, k)
+			if v == nil {
+				continue CaseLoop
+			}
 			expr, err := cb.buildExpression(v)
 			if err != nil {
 				return nil, err
 			}
-			tb.Add(k, expr)
+			for _, str := range fallthroughGroup {
+				tb.Add(str, expr)
+			}
 		}
+		fallthroughGroup = fallthroughGroup[:0]
+	}
+
+	if len(fallthroughGroup) != 0 {
+		return nil, fmt.Errorf("URL-SUFFIX-MAP: ending case should not fallthrough")
 	}
 
 	return exprURLSuffixMap{

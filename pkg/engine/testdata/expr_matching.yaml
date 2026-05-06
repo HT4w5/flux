@@ -74,6 +74,8 @@
     - URL-SUFFIX-MAP:
       - .zip: ALL
       - .tar.gz: NONE
+      - .xml:
+      - .json:
       - .gz: ALL
     statement:
       BAN: 1h
@@ -84,6 +86,8 @@
     - URL-PREFIX-MAP:
       - /admin: ALL
       - /admin/login: NONE
+      - /api:
+      - /static:
       - /auth: ALL
     statement:
       BAN: 1h
@@ -92,6 +96,7 @@
   rules:
   - expressions:
     - URL-MAP:
+      - /api:
       - /admin: ALL
       - /auth: NONE
     statement:
