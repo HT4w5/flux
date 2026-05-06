@@ -22,8 +22,8 @@ import (
 
 // stubJail implements Jail and captures added bans for test inspection.
 type stubJail struct {
-	mu   sync.Mutex
 	bans []dto.BanRecord
+	mu   sync.Mutex
 }
 
 func newStubJail() *stubJail {

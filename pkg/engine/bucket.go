@@ -321,11 +321,11 @@ func (m stepVolume) name() string {
 }
 
 type exprFileRatioBucket struct {
-	_name string
-	index FileSizeIndex
-	bucketCommon
-	leak   float64
+	_name  string
 	volume volumeMethod
+	index  FileSizeIndex
+	bucketCommon
+	leak float64
 }
 
 func (expr *exprFileRatioBucket) name() string {

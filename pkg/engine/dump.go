@@ -10,9 +10,9 @@ import (
 type CacheDump map[string]any
 
 type ByteBucketDump struct {
+	Entries    map[string]ByteBucketEntryDump `json:"entries"`
 	Name       string                         `json:"name"`
 	EntryCount int                            `json:"entry_count"`
-	Entries    map[string]ByteBucketEntryDump `json:"entries"`
 }
 
 type ByteBucketEntryDump struct {
@@ -21,27 +21,27 @@ type ByteBucketEntryDump struct {
 }
 
 type FreqBucketDump struct {
+	Entries    map[string]FreqBucketEntryDump `json:"entries"`
 	Name       string                         `json:"name"`
 	EntryCount int                            `json:"entry_count"`
-	Entries    map[string]FreqBucketEntryDump `json:"entries"`
 }
 
 type FreqBucketEntryDump struct {
-	RequestCount int64  `json:"request_count"`
 	LastUpdate   string `json:"last_update"`
+	RequestCount int64  `json:"request_count"`
 }
 
 type FileRatioBucketDump struct {
+	Entries      map[string]map[string]FileRatioBucketEntryDump `json:"entries"`
 	Name         string                                         `json:"name"`
 	VolumeMethod string                                         `json:"volume_method"`
 	EntryCount   int                                            `json:"entry_count"`
-	Entries      map[string]map[string]FileRatioBucketEntryDump `json:"entries"`
 }
 
 type FileRatioBucketEntryDump struct {
 	ByteCount  string  `json:"byte_count"`
-	Ratio      float64 `json:"ratio"`
 	LastUpdate string  `json:"last_update"`
+	Ratio      float64 `json:"ratio"`
 }
 
 func (re *RuleEngine) DumpCache() CacheDump {
