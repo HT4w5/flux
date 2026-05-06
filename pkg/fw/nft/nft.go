@@ -3,6 +3,7 @@ package nft
 import (
 	"encoding/binary"
 	"log/slog"
+	"net/netip"
 
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/google/nftables"
@@ -17,11 +18,21 @@ const (
 )
 
 type NFTablesDriver struct {
-	logger *slog.Logger
+	excludes []netip.Prefix
+	logger   *slog.Logger
 }
 
-func New(opts ...func(*NFTablesDriver)) *NFTablesDriver {
-	d := &NFTablesDriver{}
+type Option func(*NFTablesDriver)
+
+func New(opts ...Option) *NFTablesDriver {
+	d := &NFTablesDriver{
+		excludes: []netip.Prefix{
+			netip.MustParsePrefix("127.0.0.0/8"),
+			netip.MustParsePrefix("::1/128"),
+			netip.MustParsePrefix("169.254.0.0/16"),
+			netip.MustParsePrefix("fe80::/10"),
+		},
+	}
 
 	for _, opt := range opts {
 		opt(d)
@@ -30,9 +41,24 @@ func New(opts ...func(*NFTablesDriver)) *NFTablesDriver {
 	return d
 }
 
-func WithLogger(l *slog.Logger) func(*NFTablesDriver) {
+func WithLogger(l *slog.Logger) Option {
 	return func(nd *NFTablesDriver) {
 		nd.logger = l
+	}
+}
+
+func WithExcludePrivate() Option {
+	return func(nd *NFTablesDriver) {
+		nd.excludes = append(nd.excludes, netip.MustParsePrefix("10.0.0.0/8"))
+		nd.excludes = append(nd.excludes, netip.MustParsePrefix("172.16.0.0/12"))
+		nd.excludes = append(nd.excludes, netip.MustParsePrefix("192.168.0.0/16"))
+		nd.excludes = append(nd.excludes, netip.MustParsePrefix("fc00::/7"))
+	}
+}
+
+func WithExcludePrefix(prefix netip.Prefix) Option {
+	return func(nd *NFTablesDriver) {
+		nd.excludes = append(nd.excludes, prefix)
 	}
 }
 
@@ -70,6 +96,14 @@ func (d *NFTablesDriver) Install(rules []dto.BanRule) error {
 				ipsbV4.AddPrefix(p)
 			} else {
 				ipsbV6.AddPrefix(p)
+			}
+		}
+
+		for _, p := range d.excludes {
+			if p.Addr().Is4() {
+				ipsbV4.RemovePrefix(p)
+			} else {
+				ipsbV6.RemovePrefix(p)
 			}
 		}
 

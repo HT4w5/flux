@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"syscall"
@@ -24,12 +25,16 @@ import (
 func main() {
 	var cfg config.ClientConfig
 	var uiStr string
+	var excludes []string
+	var excludePrivate bool
 	pflag.StringVarP(&cfg.LogLevel, "log-level", "l", "info", "log level")
 	pflag.StringVarP(&cfg.RuleEndpoint, "rule-endpoint", "e", "http://127.0.0.1/api/v1/rules", "rule api endpoint")
 	pflag.StringVarP(&cfg.FirewallDriver, "firewall-driver", "f", "nftables", "firewall driver")
 	pflag.StringVarP(&uiStr, "update-interval", "i", "10m", "update interval")
 	pflag.BoolP("version", "v", false, "show version")
 	pflag.BoolP("help", "h", false, "show help")
+	pflag.StringSliceVarP(&excludes, "exclude-prefix", "x", nil, "excluded prefixes")
+	pflag.BoolVarP(&excludePrivate, "exclude-private", "p", true, "exclude private addresses")
 	pflag.Parse()
 
 	if help, _ := pflag.CommandLine.GetBool("help"); help {
@@ -60,13 +65,30 @@ func main() {
 		cfg.UpdateInterval = time.Minute
 		logger.Warn("update interval too short; using 1m")
 	}
+	var excludedPrefixes []netip.Prefix
+
+	for _, s := range excludes {
+		pfx, err := netip.ParsePrefix(s)
+		if err != nil {
+			logger.Error("invalid exclude prefix", "prefix", s, "error", err)
+		}
+		excludedPrefixes = append(excludedPrefixes, pfx)
+	}
 
 	logger.Info("using config", "config", cfg)
 
 	var fw fw.FirewallDriver
 	switch cfg.FirewallDriver {
 	case "nftables":
-		fw = nft.New()
+		var opts []nft.Option
+		for _, pfx := range excludedPrefixes {
+			opts = append(opts, nft.WithExcludePrefix(pfx))
+		}
+		if excludePrivate {
+			opts = append(opts, nft.WithExcludePrivate())
+		}
+
+		fw = nft.New(opts...)
 	case "stub":
 		fw = &stub.StubDriver{}
 	default:
