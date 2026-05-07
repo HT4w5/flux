@@ -39,9 +39,8 @@ type FileRatioBucketDump struct {
 }
 
 type FileRatioBucketEntryDump struct {
-	ByteCount  string  `json:"byte_count"`
-	LastUpdate string  `json:"last_update"`
-	Ratio      float64 `json:"ratio"`
+	ByteCount  string `json:"byte_count"`
+	LastUpdate string `json:"last_update"`
 }
 
 func (re *RuleEngine) DumpCache() CacheDump {
@@ -134,16 +133,6 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			var payload fileRatioBucketPayload
 			payload.read(v)
 
-			var ratio float64
-			size, ok := re.fileSizeIndex.GetSize(k[17:])
-			fByteCount := float64(payload.byteCount)
-			if !ok {
-				re.logger.Warn("DumpCache: no size info for file ratio entry", "path", path)
-				ratio = 0
-			} else {
-				ratio = fByteCount / float64(size)
-			}
-
 			bkt := fileRatioBuckets[k[0]]
 
 			client := bkt.Entries[addr.String()]
@@ -154,8 +143,7 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			}
 
 			client[path] = FileRatioBucketEntryDump{
-				ByteCount:  units.HumanSize(fByteCount),
-				Ratio:      ratio,
+				ByteCount:  units.HumanSize(float64(payload.byteCount)),
 				LastUpdate: time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
 			}
 
