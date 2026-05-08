@@ -4,53 +4,52 @@ import (
 	"encoding/binary"
 )
 
-type byteBucketBuf [16]byte
+// --- Common header ---
 
-type byteBucketPayload struct {
-	byteCount  int64
+type payloadHeader struct {
 	lastUpdate int64
 }
 
-func (p *byteBucketPayload) write(b []byte) {
-	binary.NativeEndian.PutUint64(b, uint64(p.byteCount))
-	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
+func (h *payloadHeader) encode(b []byte) {
+	binary.BigEndian.PutUint64(b, uint64(h.lastUpdate))
 }
 
-func (p *byteBucketPayload) read(b []byte) {
-	p.byteCount = int64(binary.NativeEndian.Uint64(b))
-	p.lastUpdate = int64(binary.NativeEndian.Uint64(b[8:]))
+func (h *payloadHeader) decode(b []byte) {
+	h.lastUpdate = int64(binary.BigEndian.Uint64(b))
 }
 
-type freqBucketBuf [16]byte
+// --- Byte payload ---
 
-type freqBucketPayload struct {
-	requestCount int64
-	lastUpdate   int64
+type bytePayloadBuf [16]byte
+type bytePayload struct {
+	payloadHeader
+	value int64
 }
 
-func (p *freqBucketPayload) write(b []byte) {
-	binary.NativeEndian.PutUint64(b, uint64(p.requestCount))
-	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
+func (p *bytePayload) encode(b []byte) {
+	p.payloadHeader.encode(b)
+	binary.BigEndian.PutUint64(b[8:], uint64(p.value))
 }
 
-func (p *freqBucketPayload) read(b []byte) {
-	p.requestCount = int64(binary.NativeEndian.Uint64(b))
-	p.lastUpdate = int64(binary.NativeEndian.Uint64(b[8:]))
+func (p *bytePayload) decode(b []byte) {
+	p.payloadHeader.decode(b)
+	p.value = int64(binary.BigEndian.Uint64(b[8:]))
 }
 
-type fileRatioBucketBuf [16]byte
+// --- Count payload ---
 
-type fileRatioBucketPayload struct {
-	byteCount  int64
-	lastUpdate int64
+type countPayloadBuf [12]byte
+type countPayload struct {
+	payloadHeader
+	count uint32
 }
 
-func (p *fileRatioBucketPayload) write(b []byte) {
-	binary.NativeEndian.PutUint64(b, uint64(p.byteCount))
-	binary.NativeEndian.PutUint64(b[8:], uint64(p.lastUpdate))
+func (p *countPayload) encode(b []byte) {
+	p.payloadHeader.encode(b)
+	binary.BigEndian.PutUint32(b[8:], p.count)
 }
 
-func (p *fileRatioBucketPayload) read(b []byte) {
-	p.byteCount = int64(binary.NativeEndian.Uint64(b))
-	p.lastUpdate = int64(binary.NativeEndian.Uint64(b[8:]))
+func (p *countPayload) decode(b []byte) {
+	p.payloadHeader.decode(b)
+	p.count = binary.BigEndian.Uint32(b[8:])
 }

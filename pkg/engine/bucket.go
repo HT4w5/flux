@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"errors"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"strconv"
@@ -14,94 +14,77 @@ import (
 	"github.com/docker/go-units"
 )
 
-const (
-	maxBuckets = 256
-)
+type bucketID uint16
 
-var errTooManyBuckets = errors.New("max amount of buckets reached: " + strconv.Itoa(maxBuckets))
-
-type bucketCommon struct {
-	cache          *cache.Cache
-	keyBufferPool  *pool.BytePool
-	cacheKeyPrefix byte
-}
-
-func (bc *bucketCommon) prefix() byte {
-	return bc.cacheKeyPrefix
-}
-
-func (cb *chainBuilder) newBucketCommon() (bucketCommon, error) {
-	if cb.bucketCounter >= maxBuckets {
-		return bucketCommon{}, errTooManyBuckets
-	}
-
-	prefix := byte(cb.bucketCounter)
-	cb.bucketCounter++
-
-	return bucketCommon{
-		cacheKeyPrefix: prefix,
-		cache:          cb.re.cache,
-		keyBufferPool:  cb.re.keyBufferPool,
-	}, nil
+func (id bucketID) encodeTo(buf []byte) []byte {
+	var b [2]byte
+	binary.BigEndian.PutUint16(b[:], uint16(id))
+	return append(buf, b[:]...)
 }
 
 // Bucket expressions
 
 type exprBucket interface {
 	match(ctx requestCtx, request *dto.Request) bool
-	prefix() byte
+	id() bucketID
 	name() string
 }
 
 // --- Byte Bucket ---
 
 type exprByteBucket struct {
-	_name string
-	bucketCommon
-	leak   int64
-	volume int64
+	_name         string
+	_id           bucketID
+	cache         *cache.Cache
+	keyBufferPool *pool.BytePool
+	leak          int64
+	volume        int64
 }
 
 func (expr *exprByteBucket) name() string {
 	return expr._name
 }
 
+func (expr *exprByteBucket) id() bucketID {
+	return expr._id
+}
+
 func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
-	var buf byteBucketBuf
-	var bkt byteBucketPayload
+	var buf bytePayloadBuf
+	var bkt bytePayload
 
 	keyBuffer := expr.keyBufferPool.Get()
 	defer expr.keyBufferPool.Put(keyBuffer)
 	keyBuffer = keyBuffer[:0]
 
 	keyClientAddr := request.Client.As16()
-	keyBuffer = append(keyBuffer, expr.cacheKeyPrefix)
+	keyBuffer = expr._id.encodeTo(keyBuffer)
 	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
 
 	var timeDelta int64
 	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
 	if ok {
-		bkt.read(newBuf)
+		bkt.decode(newBuf)
 		timeDelta = request.Time.Unix() - bkt.lastUpdate
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
 		newBuf = buf[:]
 	}
-	bkt.byteCount += request.Sent
+	bkt.value += request.Sent
 
 	if timeDelta > 0 {
-		bkt.byteCount = max(0, bkt.byteCount-expr.leak*timeDelta)
+		bkt.value = max(0, bkt.value-expr.leak*timeDelta)
 		bkt.lastUpdate = request.Time.Unix()
 	}
 
-	bkt.write(newBuf)
-	expr.cache.Set(keyBuffer[:], newBuf)
+	bkt.encode(newBuf)
+	expr.cache.Set(keyBuffer, newBuf)
 
-	if bkt.byteCount > expr.volume {
+	if bkt.value > expr.volume {
 		ctx.kv[ctxKeyBanReason] = banReasonByteOverflow
 		ctx.kv[ctxKeyBanThreshold] = uint64(expr.volume)
-		ctx.kv[ctxKeyBanValue] = uint64(bkt.byteCount)
+		ctx.kv[ctxKeyBanValue] = uint64(bkt.value)
 		return true
 	}
 	return false
@@ -142,68 +125,72 @@ func (cb *chainBuilder) buildExprByteBucket(value any) (exprBucket, error) {
 		return nil, fmt.Errorf("BYTE-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	bc, err := cb.newBucketCommon()
-	if err != nil {
-		return nil, err
-	}
+	id := cb.nextBucketID()
 
 	return &exprByteBucket{
-		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-byte",
-		bucketCommon: bc,
-		leak:         leak,
-		volume:       volume,
+		_name:         strconv.FormatUint(uint64(id), 10) + "-byte",
+		_id:           id,
+		cache:         cb.re.cache,
+		keyBufferPool: cb.re.keyBufferPool,
+		leak:          leak,
+		volume:        volume,
 	}, nil
 }
 
 // --- Freq Bucket ---
 
 type exprFreqBucket struct {
-	_name string
-	bucketCommon
-	leak   int64
-	volume int64
+	_name         string
+	_id           bucketID
+	cache         *cache.Cache
+	keyBufferPool *pool.BytePool
+	leak          int64
+	volume        int64
 }
 
 func (expr *exprFreqBucket) name() string {
 	return expr._name
 }
 
+func (expr *exprFreqBucket) id() bucketID {
+	return expr._id
+}
+
 func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
-	var buf freqBucketBuf
-	var bkt freqBucketPayload
+	var buf countPayloadBuf
+	var bkt countPayload
 
 	keyBuffer := expr.keyBufferPool.Get()
 	defer expr.keyBufferPool.Put(keyBuffer)
 	keyBuffer = keyBuffer[:0]
-
 	keyClientAddr := request.Client.As16()
-	keyBuffer = append(keyBuffer, expr.cacheKeyPrefix)
+	keyBuffer = expr._id.encodeTo(keyBuffer)
 	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
 
 	var timeDelta int64
 	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
 	if ok {
-		bkt.read(newBuf)
+		bkt.decode(newBuf)
 		timeDelta = request.Time.Unix() - bkt.lastUpdate
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
 		newBuf = buf[:]
 	}
-	bkt.requestCount++
+	bkt.count++
 
 	if timeDelta > 0 {
-		bkt.requestCount = max(0, bkt.requestCount-expr.leak*timeDelta)
+		bkt.count = uint32(max(0, int64(bkt.count)-expr.leak*timeDelta))
 		bkt.lastUpdate = request.Time.Unix()
 	}
 
-	bkt.write(newBuf)
+	bkt.encode(newBuf)
 	expr.cache.Set(keyBuffer[:], newBuf)
 
-	if bkt.requestCount > expr.volume {
+	if int64(bkt.count) > expr.volume {
 		ctx.kv[ctxKeyBanReason] = banReasonFreqOverflow
 		ctx.kv[ctxKeyBanThreshold] = uint64(expr.volume)
-		ctx.kv[ctxKeyBanValue] = uint64(bkt.requestCount)
+		ctx.kv[ctxKeyBanValue] = uint64(bkt.count)
 		return true
 	}
 	return false
@@ -238,16 +225,15 @@ func (cb *chainBuilder) buildExprFreqBucket(value any) (exprBucket, error) {
 		return nil, fmt.Errorf("FREQ-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	bc, err := cb.newBucketCommon()
-	if err != nil {
-		return nil, err
-	}
+	id := cb.nextBucketID()
 
 	return &exprFreqBucket{
-		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-freq",
-		bucketCommon: bc,
-		leak:         leak,
-		volume:       volume,
+		_name:         strconv.FormatUint(uint64(id), 10) + "-freq",
+		_id:           id,
+		cache:         cb.re.cache,
+		keyBufferPool: cb.re.keyBufferPool,
+		leak:          leak,
+		volume:        volume,
 	}, nil
 }
 
@@ -321,15 +307,21 @@ func (m stepVolume) name() string {
 }
 
 type exprFileRatioBucket struct {
-	_name  string
-	volume volumeMethod
-	index  FileSizeIndex
-	bucketCommon
-	leak float64
+	_name         string
+	_id           bucketID
+	cache         *cache.Cache
+	keyBufferPool *pool.BytePool
+	volume        volumeMethod
+	index         FileSizeIndex
+	leak          float64
 }
 
 func (expr *exprFileRatioBucket) name() string {
 	return expr._name
+}
+
+func (expr *exprFileRatioBucket) id() bucketID {
+	return expr._id
 }
 
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -340,44 +332,44 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 	}
 	fsize := float64(size)
 
-	var buf fileRatioBucketBuf
-	var bkt fileRatioBucketPayload
+	var buf bytePayloadBuf
+	var bkt bytePayload
 
 	keyBuffer := expr.keyBufferPool.Get()
 	defer expr.keyBufferPool.Put(keyBuffer)
 	keyBuffer = keyBuffer[:0]
 
 	keyClientAddr := request.Client.As16()
-	keyBuffer = append(keyBuffer, expr.cacheKeyPrefix)
+	keyBuffer = expr._id.encodeTo(keyBuffer)
 	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
 	keyBuffer = append(keyBuffer, request.URL...)
 
 	var timeDelta int64
 	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
 	if ok {
-		bkt.read(newBuf)
+		bkt.decode(newBuf)
 		timeDelta = request.Time.Unix() - bkt.lastUpdate
 	} else {
 		bkt.lastUpdate = request.Time.Unix()
 		timeDelta = 0
 		newBuf = buf[:]
 	}
-	bkt.byteCount += request.Sent
+	bkt.value += request.Sent
 
 	if timeDelta > 0 {
 		if expr.leak != 0 {
-			bkt.byteCount = max(0, bkt.byteCount-max(1, int64(expr.leak*float64(size*timeDelta)))) // At least leak 1 byte if expr.leak is not zero
+			bkt.value = max(0, bkt.value-max(1, int64(expr.leak*float64(size*timeDelta)))) // At least leak 1 byte if expr.leak is not zero
 		}
 		bkt.lastUpdate = request.Time.Unix()
 	}
 
-	bkt.write(newBuf)
+	bkt.encode(newBuf)
 	expr.cache.Set(keyBuffer[:], newBuf)
 
-	if bkt.byteCount > int64(expr.volume.volume(fsize)*fsize) {
+	if bkt.value > int64(expr.volume.volume(fsize)*fsize) {
 		ctx.kv[ctxKeyBanReason] = banReasonFileRatioOverflow
 		ctx.kv[ctxKeyBanThreshold] = math.Float64bits(expr.volume.volume(fsize))
-		ctx.kv[ctxKeyBanValue] = math.Float64bits(float64(bkt.byteCount) / fsize)
+		ctx.kv[ctxKeyBanValue] = math.Float64bits(float64(bkt.value) / fsize)
 		return true
 	}
 	return false
@@ -481,16 +473,15 @@ func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) 
 		return nil, fmt.Errorf("FILE-RATIO-BUCKET: unknown volume method \"%s\"", args[0])
 	}
 
-	bc, err := cb.newBucketCommon()
-	if err != nil {
-		return nil, err
-	}
+	id := cb.nextBucketID()
 
 	return &exprFileRatioBucket{
-		_name:        strconv.FormatUint(uint64(bc.prefix()), 10) + "-file-ratio",
-		index:        cb.re.fileSizeIndex,
-		bucketCommon: bc,
-		leak:         leak,
-		volume:       volume,
+		_name:         strconv.FormatUint(uint64(id), 10) + "-file-ratio",
+		_id:           id,
+		cache:         cb.re.cache,
+		keyBufferPool: cb.re.keyBufferPool,
+		index:         cb.re.fileSizeIndex,
+		leak:          leak,
+		volume:        volume,
 	}, nil
 }

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/binary"
 	"net/netip"
 	"time"
 
@@ -28,7 +29,7 @@ type FreqBucketDump struct {
 
 type FreqBucketEntryDump struct {
 	LastUpdate   string `json:"last_update"`
-	RequestCount int64  `json:"request_count"`
+	RequestCount uint32 `json:"request_count"`
 }
 
 type FileRatioBucketDump struct {
@@ -44,24 +45,24 @@ type FileRatioBucketEntryDump struct {
 }
 
 func (re *RuleEngine) DumpCache() CacheDump {
-	byteBuckets := make(map[byte]ByteBucketDump)
-	freqBuckets := make(map[byte]FreqBucketDump)
-	fileRatioBuckets := make(map[byte]FileRatioBucketDump)
+	byteBuckets := make(map[bucketID]ByteBucketDump)
+	freqBuckets := make(map[bucketID]FreqBucketDump)
+	fileRatioBuckets := make(map[bucketID]FileRatioBucketDump)
 
 	for _, b := range re.bucketMap {
 		switch v := b.(type) {
 		case *exprByteBucket:
-			byteBuckets[b.prefix()] = ByteBucketDump{
+			byteBuckets[b.id()] = ByteBucketDump{
 				Name:    b.name(),
 				Entries: make(map[string]ByteBucketEntryDump),
 			}
 		case *exprFreqBucket:
-			freqBuckets[b.prefix()] = FreqBucketDump{
+			freqBuckets[b.id()] = FreqBucketDump{
 				Name:    b.name(),
 				Entries: make(map[string]FreqBucketEntryDump),
 			}
 		case *exprFileRatioBucket:
-			fileRatioBuckets[b.prefix()] = FileRatioBucketDump{
+			fileRatioBuckets[b.id()] = FileRatioBucketDump{
 				Name:         b.name(),
 				VolumeMethod: v.volume.name(),
 				Entries:      make(map[string]map[string]FileRatioBucketEntryDump),
@@ -81,59 +82,61 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			break
 		}
 
-		if len(k) < 1 {
+		if len(k) < 2 {
 			re.logger.Warn("DumpCache: corrupt key encountered", "key", k)
 			continue
 		}
 
-		switch re.bucketMap[k[0]].(type) {
+		id := bucketID(binary.BigEndian.Uint16(k[:2]))
+
+		switch re.bucketMap[id].(type) {
 		case *exprByteBucket:
-			if len(k) < 17 || len(v) < 16 {
+			if len(k) < 18 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
 			}
-			addr := netip.AddrFrom16([16]byte(k[1:17])).Unmap()
-			var payload byteBucketPayload
-			payload.read(v)
+			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
+			var payload bytePayload
+			payload.decode(v)
 
-			bkt := byteBuckets[k[0]]
+			bkt := byteBuckets[id]
 
 			bkt.Entries[addr.String()] = ByteBucketEntryDump{
-				ByteCount:  units.HumanSize(float64(payload.byteCount)),
+				ByteCount:  units.HumanSize(float64(payload.value)),
 				LastUpdate: time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
 			}
 			bkt.EntryCount++
 
-			byteBuckets[k[0]] = bkt
+			byteBuckets[id] = bkt
 		case *exprFreqBucket:
-			if len(k) < 17 || len(v) < 16 {
+			if len(k) < 18 || len(v) < 12 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
 			}
-			addr := netip.AddrFrom16([16]byte(k[1:17])).Unmap()
-			var payload freqBucketPayload
-			payload.read(v)
+			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
+			var payload countPayload
+			payload.decode(v)
 
-			bkt := freqBuckets[k[0]]
+			bkt := freqBuckets[id]
 
 			bkt.Entries[addr.String()] = FreqBucketEntryDump{
-				RequestCount: payload.requestCount,
+				RequestCount: payload.count,
 				LastUpdate:   time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
 			}
 			bkt.EntryCount++
 
-			freqBuckets[k[0]] = bkt
+			freqBuckets[id] = bkt
 		case *exprFileRatioBucket:
-			if len(k) < 17 || len(v) < 16 {
+			if len(k) < 18 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
 				continue
 			}
-			addr := netip.AddrFrom16([16]byte(k[1:17])).Unmap()
-			path := string(k[17:])
-			var payload fileRatioBucketPayload
-			payload.read(v)
+			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
+			path := string(k[18:])
+			var payload bytePayload
+			payload.decode(v)
 
-			bkt := fileRatioBuckets[k[0]]
+			bkt := fileRatioBuckets[id]
 
 			client := bkt.Entries[addr.String()]
 
@@ -143,13 +146,13 @@ func (re *RuleEngine) DumpCache() CacheDump {
 			}
 
 			client[path] = FileRatioBucketEntryDump{
-				ByteCount:  units.HumanSize(float64(payload.byteCount)),
+				ByteCount:  units.HumanSize(float64(payload.value)),
 				LastUpdate: time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
 			}
 
 			bkt.EntryCount++
 
-			fileRatioBuckets[k[0]] = bkt
+			fileRatioBuckets[id] = bkt
 		}
 	}
 

@@ -29,7 +29,7 @@ type RuleEngine struct {
 	main          chain
 	requestChan   <-chan dto.Request
 
-	bucketMap map[byte]exprBucket
+	bucketMap map[bucketID]exprBucket
 
 	workers struct {
 		stop context.CancelFunc
@@ -136,7 +136,7 @@ func (re *RuleEngine) StartOrReload(chains []ChainConfig) error {
 	// Build chains
 	cb := chainBuilder{
 		re:            re,
-		bucketMap:     make(map[byte]exprBucket),
+		bucketMap:     make(map[bucketID]exprBucket),
 		bucketCounter: 0,
 	}
 	main, err := cb.buildChains(chains)
