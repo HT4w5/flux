@@ -167,6 +167,7 @@ func (re *RuleEngine) Shutdown() {
 	if re.workers.stop != nil {
 		re.workers.stop()
 		re.workers.Wait()
+		re.workers.stop = nil
 	}
 
 	if re.cache != nil {
@@ -175,6 +176,11 @@ func (re *RuleEngine) Shutdown() {
 }
 
 func (re *RuleEngine) routineWorker(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			re.logger.Error("routineWorker: panic recovered", "panic", r)
+		}
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -186,7 +192,9 @@ func (re *RuleEngine) routineWorker(ctx context.Context) {
 }
 
 func (re *RuleEngine) handleRequest(ctx context.Context, request *dto.Request) {
-	re.main.traverse(re.newRequestCtx(ctx), request)
+	rctx := re.newRequestCtx(ctx)
+	re.main.traverse(rctx, request)
+	re.ctxKVPool.Put(rctx.kv)
 }
 
 func (re *RuleEngine) GetStats() cache.Statistics {
