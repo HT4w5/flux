@@ -45,6 +45,11 @@ type FileRatioBucketEntryDump struct {
 }
 
 func (re *RuleEngine) DumpCache() CacheDump {
+	if re.state.Load() != engineRunning {
+		re.logger.Warn("DumpCache: engine not running")
+		return CacheDump{}
+	}
+
 	byteBuckets := make(map[bucketID]ByteBucketDump)
 	freqBuckets := make(map[bucketID]FreqBucketDump)
 	fileRatioBuckets := make(map[bucketID]FileRatioBucketDump)
@@ -89,7 +94,13 @@ func (re *RuleEngine) DumpCache() CacheDump {
 
 		id := bucketID(binary.BigEndian.Uint16(k[:2]))
 
-		switch re.bucketMap[id].(type) {
+		b, ok := re.bucketMap[id]
+		if !ok {
+			re.logger.Warn("DumpCache: unknown bucket id in cache", "id", id)
+			continue
+		}
+
+		switch b.(type) {
 		case *exprByteBucket:
 			if len(k) < 18 || len(v) < 16 {
 				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)

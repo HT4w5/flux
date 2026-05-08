@@ -17,14 +17,6 @@ type requestCtx struct {
 	kv     map[int]uint64
 }
 
-func (re *RuleEngine) newRequestCtx(parent context.Context) requestCtx {
-	return requestCtx{
-		Context: parent,
-		logger:  re.logger,
-		kv:      re.newCtxKV(),
-	}
-}
-
 func (re *RuleEngine) newCtxKV() map[int]uint64 {
 	kv := re.ctxKVPool.Get()
 

@@ -59,6 +59,7 @@ type RuleEngineConfig struct {
 	Chains        []engine.ChainConfig `mapstructure:"chains"`
 	MaxCacheBytes int64                `mapstructure:"max_cache_bytes"`
 	NumWorkers    int                  `mapstructure:"num_workers"`
+	BufferSize    int                  `mapstructure:"buffer_size"`
 }
 
 type WebConfig struct {
@@ -136,6 +137,7 @@ func DefaultServerConfig() *ServerConfig {
 		RuleEngine: RuleEngineConfig{
 			MaxCacheBytes: 200_000_000,
 			NumWorkers:    8,
+			BufferSize:    1024,
 		},
 		Web: WebConfig{
 			ListenAddr: ":8080",

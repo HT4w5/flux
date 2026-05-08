@@ -5,10 +5,20 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/HT4w5/cache"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/pool"
+)
+
+// engine states
+const (
+	engineNotStarted int32 = iota
+	engineRunning
+	engineStopping
+	engineStopped
 )
 
 type Jail interface {
@@ -27,9 +37,12 @@ type RuleEngine struct {
 	ctxKVPool     *pool.MapPool[int, uint64]
 	keyBufferPool *pool.BytePool
 	main          chain
-	requestChan   <-chan dto.Request
+	requestChan   chan dto.Request // engine-owned channel
 
-	bucketMap map[bucketID]exprBucket
+	bucketMap      map[bucketID]exprBucket
+	requestBufSize int
+
+	state atomic.Int32 // engineNotStarted / engineRunning / engineStopping / engineStopped
 
 	workers struct {
 		stop context.CancelFunc
@@ -93,23 +106,24 @@ func WithMaxCacheBytes(maxCacheBytes uint64) Option {
 	}
 }
 
-// WithRequestChan sets the request channel for the RuleEngine.
-// Must not be nil.
-func WithRequestChan(ch <-chan dto.Request) Option {
+// WithBufferSize sets the capacity of the internal request channel.
+// Defaults to 1024. A value of 0 creates an unbuffered channel.
+func WithBufferSize(n int) Option {
 	return func(re *RuleEngine) {
-		if ch == nil {
-			panic("engine: WithRequestChan requires a non-nil channel")
+		if n < 0 {
+			panic("engine: WithBufferSize requires a non-negative value")
 		}
-		re.requestChan = ch
+		re.requestBufSize = n
 	}
 }
 
 func New(opts ...Option) *RuleEngine {
 	re := &RuleEngine{
-		logger:        slog.New(slog.DiscardHandler),
-		ctxKVPool:     pool.NewMapPool[int, uint64](32),
-		keyBufferPool: pool.NewBytePool(128),
-		maxCacheBytes: 200_000_000,
+		logger:         slog.New(slog.DiscardHandler),
+		ctxKVPool:      pool.NewMapPool[int, uint64](32),
+		keyBufferPool:  pool.NewBytePool(128),
+		maxCacheBytes:  200_000_000,
+		requestBufSize: 1024,
 		workers: struct {
 			stop context.CancelFunc
 			sync.WaitGroup
@@ -123,14 +137,22 @@ func New(opts ...Option) *RuleEngine {
 		opt(re)
 	}
 
+	re.requestChan = make(chan dto.Request, re.requestBufSize)
 	re.cache = cache.New(cache.WithSize(re.maxCacheBytes))
 
 	return re
 }
 
-func (re *RuleEngine) StartOrReload(chains []ChainConfig) error {
-	if re.jail == nil || re.requestChan == nil || re.fileSizeIndex == nil {
-		return errors.New("required fields not set")
+// Start builds chain and launches workers.
+// Returns error on engine state mismatch or missing components.
+func (re *RuleEngine) Start(chains []ChainConfig) error {
+	if !re.state.CompareAndSwap(engineNotStarted, engineRunning) {
+		return errors.New("engine: already started or shut down")
+	}
+
+	if re.jail == nil || re.fileSizeIndex == nil {
+		re.state.Store(engineNotStarted)
+		return errors.New("engine: required fields not set (jail, request channel, file size index)")
 	}
 
 	// Build chains
@@ -141,16 +163,15 @@ func (re *RuleEngine) StartOrReload(chains []ChainConfig) error {
 	}
 	main, err := cb.buildChains(chains)
 	if err != nil {
-		re.logger.Error("StartOrReload: failed to build chains", "error", err)
+		re.state.Store(engineNotStarted)
+		re.logger.Error("Start: failed to build chains", "error", err)
 		return err
 	}
 
-	// Shutdown previous
-	re.Shutdown()
 	re.main = main
 	re.bucketMap = cb.bucketMap
 
-	// Start new
+	// Start workers
 	re.logger.Debug("RuleEngine startup")
 	wCtx, stop := context.WithCancel(context.Background())
 	re.workers.stop = stop
@@ -163,40 +184,76 @@ func (re *RuleEngine) StartOrReload(chains []ChainConfig) error {
 }
 
 func (re *RuleEngine) Shutdown() {
+	re.ShutdownWithTimeout(0)
+}
+
+func (re *RuleEngine) ShutdownWithTimeout(waitTimeout time.Duration) {
+	if !re.state.CompareAndSwap(engineRunning, engineStopping) {
+		return
+	}
+
 	re.logger.Debug("RuleEngine shutdown")
+
+	close(re.requestChan)
+
 	if re.workers.stop != nil {
 		re.workers.stop()
-		re.workers.Wait()
-		re.workers.stop = nil
 	}
+
+	if waitTimeout > 0 {
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), waitTimeout)
+		defer waitCancel()
+		done := make(chan struct{})
+		go func() {
+			re.workers.Wait()
+			close(done)
+		}()
+		select {
+		case <-done:
+		case <-waitCtx.Done():
+			re.logger.Warn("ShutdownWithTimeout: workers did not finish in time")
+		}
+	} else {
+		re.workers.Wait()
+	}
+
+	re.workers.stop = nil
 
 	if re.cache != nil {
 		re.cache.Reset()
 	}
+
+	re.state.Store(engineStopped)
 }
 
 func (re *RuleEngine) routineWorker(ctx context.Context) {
+	for request := range re.requestChan {
+		re.handleRequest(ctx, &request)
+	}
+}
+
+func (re *RuleEngine) handleRequest(ctx context.Context, request *dto.Request) {
 	defer func() {
 		if r := recover(); r != nil {
 			re.logger.Error("routineWorker: panic recovered", "panic", r)
 		}
 	}()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case request := <-re.requestChan:
-			re.handleRequest(ctx, &request)
-		}
+	rctx := requestCtx{
+		Context: ctx,
+		logger:  re.logger,
+		kv:      re.newCtxKV(),
 	}
-}
-
-func (re *RuleEngine) handleRequest(ctx context.Context, request *dto.Request) {
-	rctx := re.newRequestCtx(ctx)
 	re.main.traverse(rctx, request)
 	re.ctxKVPool.Put(rctx.kv)
 }
 
+func (re *RuleEngine) SendChan() chan<- dto.Request {
+	return re.requestChan
+}
+
 func (re *RuleEngine) GetStats() cache.Statistics {
+	if re.state.Load() != engineRunning {
+		return cache.Statistics{}
+	}
 	return re.cache.Statistics()
 }

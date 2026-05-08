@@ -12,7 +12,6 @@ import (
 
 	"github.com/HT4w5/flux/pkg/api"
 	"github.com/HT4w5/flux/pkg/config"
-	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/index"
 	"github.com/HT4w5/flux/pkg/jail"
@@ -129,10 +128,21 @@ func entryPoint() bool {
 		return false
 	}
 
-	// Create log source
-	requestChan := make(chan dto.Request)
-	defer close(requestChan)
+	// Create RuleEngine
+	if cfg.RuleEngine.MaxCacheBytes < 0 {
+		cfg.RuleEngine.MaxCacheBytes = 1_000_000
+	}
 
+	re := engine.New(
+		engine.WithFileSizeIndex(fileSizeIndex),
+		engine.WithJail(jailInstance),
+		engine.WithLogger(logger),
+		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
+		engine.WithBufferSize(cfg.RuleEngine.BufferSize),
+		engine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
+	)
+
+	// Create log source
 	var logSource logsrc.LogSource
 	switch cfg.LogSource.Method {
 	case "syslog":
@@ -155,7 +165,7 @@ func entryPoint() bool {
 
 		logSource = syslog.New(
 			syslog.WithNumWorkers(cfg.LogSource.Syslog.NumWorkers),
-			syslog.WithRequestChan(requestChan),
+			syslog.WithRequestChan(re.SendChan()),
 			syslog.WithNetworkAddr(network, cfg.LogSource.Syslog.Addr),
 			syslog.WithLogger(logger),
 			syslog.WithParser(p),
@@ -164,20 +174,6 @@ func entryPoint() bool {
 		logger.Error("unknown log source method", "method", cfg.LogSource.Method)
 		return false
 	}
-
-	// Create RuleEngine
-	if cfg.RuleEngine.MaxCacheBytes < 0 {
-		cfg.RuleEngine.MaxCacheBytes = 1_000_000
-	}
-
-	re := engine.New(
-		engine.WithFileSizeIndex(fileSizeIndex),
-		engine.WithJail(jailInstance),
-		engine.WithLogger(logger),
-		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
-		engine.WithRequestChan(requestChan),
-		engine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
-	)
 
 	apiHandler := api.New(
 		api.WithRuleEngine(re),
@@ -208,7 +204,7 @@ func entryPoint() bool {
 	}
 	defer jailInstance.Close()
 
-	if err := re.StartOrReload(cfg.RuleEngine.Chains); err != nil {
+	if err := re.Start(cfg.RuleEngine.Chains); err != nil {
 		logger.Error("failed to start RuleEngine", "error", err)
 		return false
 	}
