@@ -12,6 +12,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0
 	github.com/google/nftables v0.3.0
 	github.com/hashicorp/golang-lru/v2 v2.0.7
+	github.com/karlseguin/ccache/v3 v3.0.8
 	github.com/mattn/go-sqlite3 v1.14.37
 	github.com/samber/slog-gin v1.21.0
 	github.com/spf13/pflag v1.0.10
