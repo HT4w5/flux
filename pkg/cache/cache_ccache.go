@@ -2,6 +2,7 @@ package cache
 
 import (
 	"iter"
+	"sync/atomic"
 	"time"
 
 	"github.com/karlseguin/ccache/v3"
@@ -9,6 +10,11 @@ import (
 
 type CCacheCache struct {
 	cache *ccache.LayeredCache[CacheEntry]
+
+	// Stats
+	gets   atomic.Int64
+	sets   atomic.Int64
+	misses atomic.Int64
 }
 
 func NewCCacheCache(maxSize int64) *CCacheCache {
@@ -19,7 +25,9 @@ func NewCCacheCache(maxSize int64) *CCacheCache {
 }
 
 func (c *CCacheCache) Get(bucket string, key string) (entry CacheEntry, ok bool) {
+	c.gets.Add(1)
 	if item := c.cache.Get(bucket, key); item == nil || item.Expired() {
+		c.misses.Add(1)
 		return
 	} else {
 		entry = item.Value()
@@ -29,6 +37,7 @@ func (c *CCacheCache) Get(bucket string, key string) (entry CacheEntry, ok bool)
 }
 
 func (c *CCacheCache) Set(bucket string, key string, entry CacheEntry, ttl time.Duration) {
+	c.sets.Add(1)
 	c.cache.Set(bucket, key, entry, ttl)
 }
 
@@ -40,5 +49,15 @@ func (c *CCacheCache) Iterator(bucket string) iter.Seq2[string, CacheEntry] {
 			}
 			return yield(key, item.Value())
 		})
+	}
+}
+
+func (c *CCacheCache) Statistics() Staticstics {
+	return Staticstics{
+		Gets:      c.gets.Load(),
+		Sets:      c.sets.Load(),
+		Misses:    c.misses.Load(),
+		Evictions: int64(c.cache.GetDropped()),
+		Size:      c.cache.GetSize(),
 	}
 }

@@ -280,3 +280,158 @@ func TestCCacheCache_ConcurrentAccess(t *testing.T) {
 	<-done
 	<-done
 }
+
+// ---------- Statistics ----------
+
+func TestCCacheCache_Statistics_Initial(t *testing.T) {
+	c := NewCCacheCache(100)
+	s := c.Statistics()
+	if s.Gets != 0 || s.Sets != 0 || s.Misses != 0 || s.Size != 0 {
+		t.Errorf("initial stats should be all zero: %+v", s)
+	}
+}
+
+func TestCCacheCache_Statistics_Sets(t *testing.T) {
+	c := NewCCacheCache(100)
+
+	c.Set("b", "k1", CacheEntry{Value: 1}, time.Hour)
+	c.Set("b", "k2", CacheEntry{Value: 2}, time.Hour)
+	c.Set("b", "k3", CacheEntry{Value: 3}, time.Hour)
+
+	s := c.Statistics()
+	if s.Sets != 3 {
+		t.Errorf("Sets = %d, want 3", s.Sets)
+	}
+	if s.Size != 3 {
+		t.Errorf("Size = %d, want 3", s.Size)
+	}
+	if s.Gets != 0 {
+		t.Errorf("Gets = %d, want 0 (only Sets performed)", s.Gets)
+	}
+}
+
+func TestCCacheCache_Statistics_GetsHits(t *testing.T) {
+	c := NewCCacheCache(100)
+	c.Set("b", "k", CacheEntry{Value: 42}, time.Hour)
+
+	// hit
+	c.Get("b", "k")
+	// hit again
+	c.Get("b", "k")
+
+	s := c.Statistics()
+	if s.Gets != 2 {
+		t.Errorf("Gets = %d, want 2", s.Gets)
+	}
+	if s.Misses != 0 {
+		t.Errorf("Misses = %d, want 0", s.Misses)
+	}
+}
+
+func TestCCacheCache_Statistics_GetsMisses(t *testing.T) {
+	c := NewCCacheCache(100)
+
+	// miss on empty cache
+	c.Get("b", "missing")
+	// miss on wrong key
+	c.Set("b", "exists", CacheEntry{Value: 1}, time.Hour)
+	c.Get("b", "wrong")
+
+	s := c.Statistics()
+	if s.Gets != 2 {
+		t.Errorf("Gets = %d, want 2", s.Gets)
+	}
+	if s.Misses != 2 {
+		t.Errorf("Misses = %d, want 2", s.Misses)
+	}
+	// one Set
+	if s.Sets != 1 {
+		t.Errorf("Sets = %d, want 1", s.Sets)
+	}
+}
+
+func TestCCacheCache_Statistics_Overwrite(t *testing.T) {
+	c := NewCCacheCache(100)
+
+	c.Set("b", "k", CacheEntry{Value: 1}, time.Hour)
+	c.Set("b", "k", CacheEntry{Value: 2}, time.Hour)
+	c.Set("b", "k", CacheEntry{Value: 3}, time.Hour)
+
+	s := c.Statistics()
+	if s.Sets != 3 {
+		t.Errorf("Sets = %d, want 3 (each Set counts)", s.Sets)
+	}
+	// overwriting the same key should keep Size at 1
+	if s.Size != 1 {
+		t.Errorf("Size = %d, want 1 (same key overwritten)", s.Size)
+	}
+}
+
+func TestCCacheCache_Statistics_Evictions(t *testing.T) {
+	c := NewCCacheCache(2)
+
+	for i := 0; i < 10; i++ {
+		c.Set("b", string(rune('a'+i)), CacheEntry{Value: uint64(i)}, time.Hour)
+	}
+	time.Sleep(5 * time.Millisecond)
+
+	s := c.Statistics()
+	if s.Sets != 10 {
+		t.Errorf("Sets = %d, want 10", s.Sets)
+	}
+	if s.Evictions <= 0 {
+		t.Errorf("Evictions = %d, want > 0 (MaxSize enforcement)", s.Evictions)
+	}
+	if s.Size > 2 {
+		t.Errorf("Size = %d, want ≤ 2", s.Size)
+	}
+}
+
+func TestCCacheCache_Statistics_TTLExpired(t *testing.T) {
+	c := NewCCacheCache(100)
+
+	c.Set("b", "exp", CacheEntry{Value: 99}, 10*time.Millisecond)
+
+	// hit before expiry
+	c.Get("b", "exp")
+
+	time.Sleep(50 * time.Millisecond)
+
+	// miss after expiry
+	c.Get("b", "exp")
+
+	s := c.Statistics()
+	if s.Gets != 2 {
+		t.Errorf("Gets = %d, want 2", s.Gets)
+	}
+	if s.Misses != 1 {
+		t.Errorf("Misses = %d, want 1 (TTL expiry)", s.Misses)
+	}
+}
+
+func TestCCacheCache_Statistics_MultipleBuckets(t *testing.T) {
+	c := NewCCacheCache(100)
+
+	c.Set("b1", "k1", CacheEntry{Value: 1}, time.Hour)
+	c.Set("b1", "k2", CacheEntry{Value: 2}, time.Hour)
+	c.Set("b2", "k1", CacheEntry{Value: 3}, time.Hour)
+
+	c.Get("b1", "k1") // hit
+	c.Get("b1", "k3") // miss
+	c.Get("b2", "k1") // hit
+	c.Get("b2", "k9") // miss
+
+	s := c.Statistics()
+	if s.Sets != 3 {
+		t.Errorf("Sets = %d, want 3", s.Sets)
+	}
+	if s.Gets != 4 {
+		t.Errorf("Gets = %d, want 4", s.Gets)
+	}
+	if s.Misses != 2 {
+		t.Errorf("Misses = %d, want 2", s.Misses)
+	}
+	if s.Size != 3 {
+		t.Errorf("Size = %d, want 3 (2 in b1 + 1 in b2)", s.Size)
+	}
+}
