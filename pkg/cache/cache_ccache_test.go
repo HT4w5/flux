@@ -41,7 +41,7 @@ func TestCCacheCache_GetSet(t *testing.T) {
 			name:   "large values",
 			bucket: "b3",
 			key:    "large",
-			entry:  CacheEntry{LastUpdate: 1<<62 - 1, Value: 1<<64 - 1},
+			entry:  CacheEntry{LastUpdate: 1<<62 - 1, Value: 1<<62 - 1},
 		},
 	}
 
@@ -135,7 +135,7 @@ func TestCCacheCache_Iterator_EarlyStop(t *testing.T) {
 	c := NewCCacheCache(100)
 
 	for i := 0; i < 5; i++ {
-		c.Set("b", string(rune('a'+i)), CacheEntry{Value: uint64(i)}, time.Hour)
+		c.Set("b", string(rune('a'+i)), CacheEntry{Value: int64(i)}, time.Hour)
 	}
 
 	count := 0
@@ -202,7 +202,7 @@ func TestCCacheCache_MaxSizeEviction(t *testing.T) {
 
 	// insert many entries to force eviction, then verify total count ≤ MaxSize
 	for i := 0; i < 10; i++ {
-		c.Set("b", string(rune('a'+i)), CacheEntry{Value: uint64(i)}, time.Hour)
+		c.Set("b", string(rune('a'+i)), CacheEntry{Value: int64(i)}, time.Hour)
 	}
 
 	// Give the background eviction worker a moment
@@ -265,14 +265,14 @@ func TestCCacheCache_ConcurrentAccess(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			c.Set("b", "k", CacheEntry{Value: uint64(i)}, time.Hour)
+			c.Set("b", "k", CacheEntry{Value: int64(i)}, time.Hour)
 			c.Get("b", "k")
 		}
 		done <- struct{}{}
 	}()
 	go func() {
 		for i := 0; i < 100; i++ {
-			c.Set("b", "k", CacheEntry{Value: uint64(i)}, time.Hour)
+			c.Set("b", "k", CacheEntry{Value: int64(i)}, time.Hour)
 			c.Get("b", "k")
 		}
 		done <- struct{}{}
@@ -371,7 +371,7 @@ func TestCCacheCache_Statistics_Evictions(t *testing.T) {
 	c := NewCCacheCache(2)
 
 	for i := 0; i < 10; i++ {
-		c.Set("b", string(rune('a'+i)), CacheEntry{Value: uint64(i)}, time.Hour)
+		c.Set("b", string(rune('a'+i)), CacheEntry{Value: int64(i)}, time.Hour)
 	}
 	time.Sleep(5 * time.Millisecond)
 

@@ -12,10 +12,10 @@ var (
 
 type CacheEntry struct {
 	LastUpdate int64
-	Value      uint64
+	Value      int64
 }
 
-type Staticstics struct {
+type Statistics struct {
 	Gets   int64 `json:"gets"`
 	Sets   int64 `json:"sets"`
 	Misses int64 `json:"misses"`
@@ -30,5 +30,5 @@ type Cache interface {
 	Get(bucket string, key string) (entry CacheEntry, ok bool)
 	Set(bucket string, key string, entry CacheEntry, ttl time.Duration)
 	Iterator(bucket string) iter.Seq2[string, CacheEntry]
-	Statistics() Staticstics
+	Statistics() Statistics
 }

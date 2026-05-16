@@ -52,8 +52,8 @@ func (c *CCacheCache) Iterator(bucket string) iter.Seq2[string, CacheEntry] {
 	}
 }
 
-func (c *CCacheCache) Statistics() Staticstics {
-	return Staticstics{
+func (c *CCacheCache) Statistics() Statistics {
+	return Statistics{
 		Gets:      c.gets.Load(),
 		Sets:      c.sets.Load(),
 		Misses:    c.misses.Load(),
