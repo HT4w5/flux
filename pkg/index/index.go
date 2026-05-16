@@ -83,6 +83,9 @@ func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
 }
 
 func (i *FileSizeIndex) GetSize(path []byte) (int64, bool) {
+	if len(path) == 0 {
+		return NonExistent, false
+	}
 	var trimmed []byte
 	if path[0] == '/' {
 		trimmed = path[1:]
