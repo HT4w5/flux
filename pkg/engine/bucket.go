@@ -16,6 +16,8 @@ import (
 type exprBucket interface {
 	match(ctx requestCtx, request *dto.Request) bool
 	name() string
+	typeName() string
+	config() any
 }
 
 // --- Byte Bucket ---
@@ -30,6 +32,22 @@ type exprByteBucket struct {
 
 func (expr *exprByteBucket) name() string {
 	return expr._name
+}
+
+func (expr *exprByteBucket) typeName() string {
+	return "byte"
+}
+
+func (expr *exprByteBucket) config() any {
+	return struct {
+		Leak   string        `json:"leak"`
+		Volume string        `json:"volume"`
+		TTL    time.Duration `json:"ttl"`
+	}{
+		Leak:   units.HumanSize(float64(expr.leak)),
+		Volume: units.HumanSize(float64(expr.volume)),
+		TTL:    expr.ttl,
+	}
 }
 
 func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -113,6 +131,22 @@ type exprFreqBucket struct {
 
 func (expr *exprFreqBucket) name() string {
 	return expr._name
+}
+
+func (expr *exprFreqBucket) typeName() string {
+	return "freq"
+}
+
+func (expr *exprFreqBucket) config() any {
+	return struct {
+		Leak   int64         `json:"leak"`
+		Volume int64         `json:"volume"`
+		TTL    time.Duration `json:"ttl"`
+	}{
+		Leak:   expr.leak,
+		Volume: expr.volume,
+		TTL:    expr.ttl,
+	}
 }
 
 func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
@@ -263,6 +297,20 @@ type exprFileRatioBucket struct {
 
 func (expr *exprFileRatioBucket) name() string {
 	return expr._name
+}
+
+func (expr *exprFileRatioBucket) typeName() string {
+	return "file-ratio"
+}
+
+func (expr *exprFileRatioBucket) config() any {
+	return struct {
+		Leak         float64 `json:"leak"`
+		VolumeMethod string  `json:"volume_method"`
+	}{
+		Leak:         expr.leak,
+		VolumeMethod: expr.volume.name(),
+	}
 }
 
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {

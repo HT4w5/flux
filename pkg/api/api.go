@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -45,8 +47,9 @@ func (s *APIHandler) RegisterRoutes(r *gin.Engine, g *gin.RouterGroup) {
 	v1.POST("/records", s.handlePOSTBanRecord)
 	v1.DELETE("/records", s.handleDELETEBanRecord)
 	v1.GET("/rules", s.handleGETBanRules)
-	v1.GET("/analyzer/stats", s.handleGETAnalyzerStats)
-	v1.GET("/analyzer/cache", s.handleGETAnalyzerCache)
+	v1.GET("/buckets", s.handleGETBuckets)
+	v1.GET("/buckets/:bucket/entries", s.handleGETBucketEntries)
+	v1.GET("/buckets/stats", s.handleGETBucketStats)
 	v1.GET("/index/stats", s.handleGETIndexStats)
 	v1.GET("/index/cache", s.handleGETIndexCache)
 }
@@ -128,16 +131,63 @@ func (s *APIHandler) handleGETBanRules(c *gin.Context) {
 	c.JSON(http.StatusOK, rules)
 }
 
-// Analyzer handlers
+// Bucket handlers
 
-func (s *APIHandler) handleGETAnalyzerStats(c *gin.Context) {
-	stats := s.re.GetStats()
+func (s *APIHandler) handleGETBucketStats(c *gin.Context) {
+	stats, err := s.re.GetBucketStatistics()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, msgResp{
+			Msg:  err.Error(),
+			Code: http.StatusInternalServerError,
+		})
+	}
 	c.JSON(http.StatusOK, stats)
 }
 
-func (s *APIHandler) handleGETAnalyzerCache(c *gin.Context) {
-	dump := s.re.DumpCache()
-	c.JSON(http.StatusOK, dump)
+func (s *APIHandler) handleGETBuckets(c *gin.Context) {
+	buckets, err := s.re.GetBuckets()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, msgResp{
+			Msg:  err.Error(),
+			Code: http.StatusInternalServerError,
+		})
+	}
+	c.JSON(http.StatusOK, buckets)
+}
+
+func (s *APIHandler) handleGETBucketEntries(c *gin.Context) {
+	bucket := c.Param("bucket")
+
+	it, err := s.re.GetBucketEntries(bucket)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, msgResp{
+			Msg:  err.Error(),
+			Code: http.StatusInternalServerError,
+		})
+	}
+
+	c.Header("Content-Type", "application/x-ndjson")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Content-Type-Options", "nosniff")
+
+	c.Status(http.StatusOK)
+
+	c.Stream(func(w io.Writer) bool {
+		encoder := json.NewEncoder(w)
+
+		for entry := range it {
+			if err := encoder.Encode(entry); err != nil {
+				return false
+			}
+
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+
+		return false
+	})
 }
 
 // Index handlers

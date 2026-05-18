@@ -1,185 +1,158 @@
 package engine
 
 import (
-	"encoding/binary"
+	"errors"
+	"iter"
 	"net/netip"
 	"time"
+	"unsafe"
 
+	"github.com/HT4w5/flux/pkg/cache"
 	"github.com/docker/go-units"
 )
 
-type CacheDump map[string]any
-
-type ByteBucketDump struct {
-	Entries    map[string]ByteBucketEntryDump `json:"entries"`
-	Name       string                         `json:"name"`
-	EntryCount int                            `json:"entry_count"`
+type BucketInfo struct {
+	Name   string `json:"name"`
+	Type   string `json:"type"`
+	Config any    `json:"config"`
 }
 
-type ByteBucketEntryDump struct {
-	ByteCount  string `json:"byte_count"`
-	LastUpdate string `json:"last_update"`
-}
+var errEngineNotRunning = errors.New("engine not running")
 
-type FreqBucketDump struct {
-	Entries    map[string]FreqBucketEntryDump `json:"entries"`
-	Name       string                         `json:"name"`
-	EntryCount int                            `json:"entry_count"`
-}
-
-type FreqBucketEntryDump struct {
-	LastUpdate   string `json:"last_update"`
-	RequestCount uint32 `json:"request_count"`
-}
-
-type FileRatioBucketDump struct {
-	Entries      map[string]map[string]FileRatioBucketEntryDump `json:"entries"`
-	Name         string                                         `json:"name"`
-	VolumeMethod string                                         `json:"volume_method"`
-	EntryCount   int                                            `json:"entry_count"`
-}
-
-type FileRatioBucketEntryDump struct {
-	ByteCount  string `json:"byte_count"`
-	LastUpdate string `json:"last_update"`
-}
-
-func (re *RuleEngine) DumpCache() CacheDump {
+func (re *RuleEngine) GetBuckets() ([]BucketInfo, error) {
 	if re.state.Load() != engineRunning {
-		re.logger.Warn("DumpCache: engine not running")
-		return CacheDump{}
+		return nil, errEngineNotRunning
 	}
 
-	byteBuckets := make(map[bucketID]ByteBucketDump)
-	freqBuckets := make(map[bucketID]FreqBucketDump)
-	fileRatioBuckets := make(map[bucketID]FileRatioBucketDump)
+	var bktInfos []BucketInfo
+	for name, bkt := range re.bucketMap {
+		bktInfos = append(bktInfos, BucketInfo{
+			Name:   name,
+			Type:   bkt.typeName(),
+			Config: bkt.config(),
+		})
+	}
 
-	for _, b := range re.bucketMap {
-		switch v := b.(type) {
-		case *exprByteBucket:
-			byteBuckets[b.id()] = ByteBucketDump{
-				Name:    b.name(),
-				Entries: make(map[string]ByteBucketEntryDump),
-			}
-		case *exprFreqBucket:
-			freqBuckets[b.id()] = FreqBucketDump{
-				Name:    b.name(),
-				Entries: make(map[string]FreqBucketEntryDump),
-			}
-		case *exprFileRatioBucket:
-			fileRatioBuckets[b.id()] = FileRatioBucketDump{
-				Name:         b.name(),
-				VolumeMethod: v.volume.name(),
-				Entries:      make(map[string]map[string]FileRatioBucketEntryDump),
-			}
+	return bktInfos, nil
+}
+
+func (re *RuleEngine) GetBucketStatistics() (cache.Statistics, error) {
+	if re.state.Load() != engineRunning {
+		return cache.Statistics{}, errEngineNotRunning
+	}
+
+	return re.cache.Statistics(), nil
+}
+
+var errNoSuchBucket = errors.New("no such bucket")
+var errBadBucketType = errors.New("bad bucket type")
+
+func (re *RuleEngine) GetBucketEntries(bucket string) (iter.Seq[any], error) {
+	if re.state.Load() != engineRunning {
+		return nil, errEngineNotRunning
+	}
+
+	bkt, ok := re.bucketMap[bucket]
+	if !ok {
+		return nil, errNoSuchBucket
+	}
+
+	var buildEntry func(k string, v cache.CacheEntry) any
+
+	switch bkt.typeName() {
+	case "byte":
+		buildEntry = buildByteBucketEntry
+	case "freq":
+		buildEntry = buildFreqBucketEntry
+	case "file-ratio":
+		buildEntry = buildFileRatioBucketEntry
+	default:
+		return nil, errBadBucketType
+	}
+
+	it := re.cache.Iterator(bucket)
+
+	return func(yield func(any) bool) {
+		it(func(k string, v cache.CacheEntry) bool {
+			return yield(buildEntry(k, v))
+		})
+	}, nil
+}
+
+type errorEntry struct {
+	Reason string `json:"reason"`
+}
+
+type byteBucketEntry struct {
+	Addr        string `json:"addr"`
+	Bytes       string `json:"bytes"`
+	LastUpdated string `json:"last_updated"`
+}
+
+type freqBucketEntry struct {
+	Addr        string `json:"addr"`
+	Requests    int64  `json:"requests"`
+	LastUpdated string `json:"last_updated"`
+}
+
+type fileRatioBucketEntry struct {
+	Addr        string `json:"addr"`
+	URL         string `json:"url"`
+	Bytes       string `json:"bytes"`
+	LastUpdated string `json:"last_updated"`
+}
+
+func buildByteBucketEntry(k string, v cache.CacheEntry) any {
+	if len(k) < 16 {
+		return errorEntry{
+			Reason: "entry key too short",
 		}
 	}
 
-	it := re.cache.Iterator()
-	kBuf := re.keyBufferPool.Get()
-	vBuf := re.keyBufferPool.Get()
-	defer re.keyBufferPool.Put(kBuf)
-	defer re.keyBufferPool.Put(vBuf)
+	ptr := unsafe.StringData(k)
+	bytes := *(*[16]byte)(unsafe.Pointer(ptr))
+	addr := netip.AddrFrom16(bytes)
 
-	for {
-		k, v, ok := it.GetNext(kBuf, vBuf)
-		if !ok {
-			break
-		}
+	return byteBucketEntry{
+		Addr:        addr.Unmap().String(),
+		Bytes:       units.HumanSize(float64(v.Value)),
+		LastUpdated: time.Unix(v.LastUpdate, 0).Format(time.RFC3339),
+	}
+}
 
-		if len(k) < 2 {
-			re.logger.Warn("DumpCache: corrupt key encountered", "key", k)
-			continue
-		}
-
-		id := bucketID(binary.BigEndian.Uint16(k[:2]))
-
-		b, ok := re.bucketMap[id]
-		if !ok {
-			re.logger.Warn("DumpCache: unknown bucket id in cache", "id", id)
-			continue
-		}
-
-		switch b.(type) {
-		case *exprByteBucket:
-			if len(k) < 18 || len(v) < 16 {
-				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
-				continue
-			}
-			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
-			var payload bytePayload
-			payload.decode(v)
-
-			bkt := byteBuckets[id]
-
-			bkt.Entries[addr.String()] = ByteBucketEntryDump{
-				ByteCount:  units.HumanSize(float64(payload.value)),
-				LastUpdate: time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
-			}
-			bkt.EntryCount++
-
-			byteBuckets[id] = bkt
-		case *exprFreqBucket:
-			if len(k) < 18 || len(v) < 12 {
-				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
-				continue
-			}
-			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
-			var payload countPayload
-			payload.decode(v)
-
-			bkt := freqBuckets[id]
-
-			bkt.Entries[addr.String()] = FreqBucketEntryDump{
-				RequestCount: payload.count,
-				LastUpdate:   time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
-			}
-			bkt.EntryCount++
-
-			freqBuckets[id] = bkt
-		case *exprFileRatioBucket:
-			if len(k) < 18 || len(v) < 16 {
-				re.logger.Warn("DumpCache: corrupt entry encountered", "key", k, "value", v)
-				continue
-			}
-			addr := netip.AddrFrom16([16]byte(k[2:18])).Unmap()
-			path := string(k[18:])
-			var payload bytePayload
-			payload.decode(v)
-
-			bkt := fileRatioBuckets[id]
-
-			client := bkt.Entries[addr.String()]
-
-			if client == nil {
-				client = make(map[string]FileRatioBucketEntryDump)
-				bkt.Entries[addr.String()] = client
-			}
-
-			client[path] = FileRatioBucketEntryDump{
-				ByteCount:  units.HumanSize(float64(payload.value)),
-				LastUpdate: time.Unix(payload.lastUpdate, 0).Format(time.RFC3339),
-			}
-
-			bkt.EntryCount++
-
-			fileRatioBuckets[id] = bkt
+func buildFreqBucketEntry(k string, v cache.CacheEntry) any {
+	if len(k) < 16 {
+		return errorEntry{
+			Reason: "entry key too short",
 		}
 	}
 
-	cd := make(CacheDump, len(re.bucketMap))
+	ptr := unsafe.StringData(k)
+	bytes := *(*[16]byte)(unsafe.Pointer(ptr))
+	addr := netip.AddrFrom16(bytes)
 
-	for _, v := range byteBuckets {
-		cd[v.Name] = v
+	return freqBucketEntry{
+		Addr:        addr.Unmap().String(),
+		Requests:    v.Value,
+		LastUpdated: time.Unix(v.LastUpdate, 0).Format(time.RFC3339),
+	}
+}
+
+func buildFileRatioBucketEntry(k string, v cache.CacheEntry) any {
+	if len(k) < 16 {
+		return errorEntry{
+			Reason: "entry key too short",
+		}
 	}
 
-	for _, v := range freqBuckets {
-		cd[v.Name] = v
-	}
+	ptr := unsafe.StringData(k)
+	bytes := *(*[16]byte)(unsafe.Pointer(ptr))
+	addr := netip.AddrFrom16(bytes)
 
-	for _, v := range fileRatioBuckets {
-		cd[v.Name] = v
+	return fileRatioBucketEntry{
+		Addr:        addr.Unmap().String(),
+		URL:         k[16:],
+		Bytes:       units.HumanSize(float64(v.Value)),
+		LastUpdated: time.Unix(v.LastUpdate, 0).Format(time.RFC3339),
 	}
-
-	return cd
 }

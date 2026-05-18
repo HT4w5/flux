@@ -243,10 +243,3 @@ func (re *RuleEngine) handleRequest(ctx context.Context, request *dto.Request) {
 func (re *RuleEngine) SendChan() chan<- dto.Request {
 	return re.requestChan
 }
-
-func (re *RuleEngine) GetStats() cache.Statistics {
-	if re.state.Load() != engineRunning {
-		return cache.Statistics{}
-	}
-	return re.cache.Statistics()
-}
