@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/HT4w5/cache"
+	"github.com/HT4w5/flux/pkg/cache"
 	"github.com/HT4w5/flux/pkg/dto"
 	"github.com/HT4w5/flux/pkg/pool"
 )
@@ -31,15 +31,14 @@ type FileSizeIndex interface {
 
 type RuleEngine struct {
 	jail          Jail
-	cache         *cache.Cache
+	cache         cache.Cache
 	fileSizeIndex FileSizeIndex
 	logger        *slog.Logger
 	ctxKVPool     *pool.MapPool[int, uint64]
-	keyBufferPool *pool.BytePool
 	main          chain
 	requestChan   chan dto.Request // engine-owned channel
 
-	bucketMap      map[bucketID]exprBucket
+	bucketMap      map[string]exprBucket
 	requestBufSize int
 
 	state atomic.Int32 // engineNotStarted / engineRunning / engineStopping / engineStopped
@@ -50,7 +49,7 @@ type RuleEngine struct {
 		num int
 	}
 
-	maxCacheBytes uint64
+	maxCacheSize int64
 }
 
 type Option func(*RuleEngine)
@@ -99,10 +98,10 @@ func WithNumWorkers(num int) Option {
 	}
 }
 
-// WithMaxCacheBytes sets the max cache size in bytes.
-func WithMaxCacheBytes(maxCacheBytes uint64) Option {
+// WithMaxCacheSize sets the max cache size in bytes.
+func WithMaxCacheSize(maxCacheSize int64) Option {
 	return func(re *RuleEngine) {
-		re.maxCacheBytes = maxCacheBytes
+		re.maxCacheSize = maxCacheSize
 	}
 }
 
@@ -121,8 +120,7 @@ func New(opts ...Option) *RuleEngine {
 	re := &RuleEngine{
 		logger:         slog.New(slog.DiscardHandler),
 		ctxKVPool:      pool.NewMapPool[int, uint64](32),
-		keyBufferPool:  pool.NewBytePool(128),
-		maxCacheBytes:  200_000_000,
+		maxCacheSize:   10_000,
 		requestBufSize: 1024,
 		workers: struct {
 			stop context.CancelFunc
@@ -138,7 +136,7 @@ func New(opts ...Option) *RuleEngine {
 	}
 
 	re.requestChan = make(chan dto.Request, re.requestBufSize)
-	re.cache = cache.New(cache.WithSize(re.maxCacheBytes))
+	re.cache = cache.NewCCacheCache(re.maxCacheSize) // TODO: add cache implementation selection
 
 	return re
 }
@@ -157,9 +155,8 @@ func (re *RuleEngine) Start(chains []ChainConfig) error {
 
 	// Build chains
 	cb := chainBuilder{
-		re:            re,
-		bucketMap:     make(map[bucketID]exprBucket),
-		bucketCounter: 0,
+		re:        re,
+		bucketMap: make(map[string]exprBucket),
 	}
 	main, err := cb.buildChains(chains)
 	if err != nil {
@@ -218,10 +215,6 @@ func (re *RuleEngine) ShutdownWithTimeout(waitTimeout time.Duration) {
 	}
 
 	re.workers.stop = nil
-
-	if re.cache != nil {
-		re.cache.Reset()
-	}
 
 	re.state.Store(engineStopped)
 }

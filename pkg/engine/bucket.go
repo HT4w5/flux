@@ -1,239 +1,186 @@
 package engine
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math"
 	"strconv"
-	"strings"
-	"unsafe"
+	"time"
 
-	"github.com/HT4w5/cache"
+	"github.com/HT4w5/flux/pkg/cache"
 	"github.com/HT4w5/flux/pkg/dto"
-	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
 )
-
-type bucketID uint16
-
-func (id bucketID) encodeTo(buf []byte) []byte {
-	var b [2]byte
-	binary.BigEndian.PutUint16(b[:], uint16(id))
-	return append(buf, b[:]...)
-}
 
 // Bucket expressions
 
 type exprBucket interface {
 	match(ctx requestCtx, request *dto.Request) bool
-	id() bucketID
 	name() string
 }
 
 // --- Byte Bucket ---
 
 type exprByteBucket struct {
-	_name         string
-	_id           bucketID
-	cache         *cache.Cache
-	keyBufferPool *pool.BytePool
-	leak          int64
-	volume        int64
+	_name  string
+	cache  cache.Cache
+	leak   int64
+	volume int64
+	ttl    time.Duration
 }
 
 func (expr *exprByteBucket) name() string {
 	return expr._name
 }
 
-func (expr *exprByteBucket) id() bucketID {
-	return expr._id
-}
-
 func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
-	var buf bytePayloadBuf
-	var bkt bytePayload
-
-	keyBuffer := expr.keyBufferPool.Get()
-	defer expr.keyBufferPool.Put(keyBuffer)
-	keyBuffer = keyBuffer[:0]
-
-	keyClientAddr := request.Client.As16()
-	keyBuffer = expr._id.encodeTo(keyBuffer)
-	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
-
 	var timeDelta int64
-	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
+	keyClientAddr := request.Client.As16()
+	key := string(keyClientAddr[:])
+	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		bkt.decode(newBuf)
-		timeDelta = request.Time.Unix() - bkt.lastUpdate
+		timeDelta = request.Time.Unix() - bkt.LastUpdate
 	} else {
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time.Unix()
 		timeDelta = 0
-		newBuf = buf[:]
 	}
-	bkt.value += request.Sent
+	bkt.Value += request.Sent
 
 	if timeDelta > 0 {
-		bkt.value = max(0, bkt.value-expr.leak*timeDelta)
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.Value = max(0, bkt.Value-expr.leak*timeDelta)
+		bkt.LastUpdate = request.Time.Unix()
 	}
 
-	bkt.encode(newBuf)
-	expr.cache.Set(keyBuffer, newBuf)
+	expr.cache.Set(expr._name, key, bkt, expr.ttl)
 
-	if bkt.value > expr.volume {
+	if bkt.Value > expr.volume {
 		ctx.kv[ctxKeyBanReason] = banReasonByteOverflow
 		ctx.kv[ctxKeyBanThreshold] = uint64(expr.volume)
-		ctx.kv[ctxKeyBanValue] = uint64(bkt.value)
+		ctx.kv[ctxKeyBanValue] = uint64(bkt.Value)
 		return true
 	}
 	return false
 }
 
 func (cb *chainBuilder) buildExprByteBucket(value any) (exprBucket, error) {
-	str, ok := value.(string)
-	if !ok {
-		return nil, fmt.Errorf("BYTE-BUCKET expression expects a string, got %T", value)
-	}
-
-	args := strings.Split(str, ",")
-	if len(args) != 2 {
-		return nil, fmt.Errorf("BYTE-BUCKET expression expects 2 arguments, got %d", len(args))
-	}
-
-	leak, err := units.FromHumanSize(args[0])
+	m, err := assertRootMap(value)
 	if err != nil {
-		leak, err = strconv.ParseInt(args[0], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("BYTE-BUCKET expects integer/bytesize leak, got %s", args[0])
-		}
+		return nil, fmt.Errorf("BYTE-BUCKET: %w", err)
 	}
 
+	name, err := assertString(m, "name")
+	if err != nil {
+		return nil, fmt.Errorf("BYTE-BUCKET: %w", err)
+	}
+
+	if _, exists := cb.bucketMap[name]; exists {
+		return nil, fmt.Errorf("BYTE-BUCKET: duplicate bucket name %q", name)
+	}
+
+	leak, err := assertByteSize(m, "leak")
+	if err != nil {
+		return nil, fmt.Errorf("BYTE-BUCKET: %w", err)
+	}
 	if leak < 0 {
 		return nil, fmt.Errorf("BYTE-BUCKET expects non-negative leak, got %d", leak)
 	}
 
-	volume, err := units.FromHumanSize(args[1])
+	volume, err := assertByteSize(m, "volume")
 	if err != nil {
-		volume, err = strconv.ParseInt(args[1], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("BYTE-BUCKET expects integer/bytesize volume, got %s", args[1])
-		}
+		return nil, fmt.Errorf("BYTE-BUCKET: %w", err)
 	}
-
 	if volume < 0 {
 		return nil, fmt.Errorf("BYTE-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	id := cb.nextBucketID()
-
 	return &exprByteBucket{
-		_name:         strconv.FormatUint(uint64(id), 10) + "-byte",
-		_id:           id,
-		cache:         cb.re.cache,
-		keyBufferPool: cb.re.keyBufferPool,
-		leak:          leak,
-		volume:        volume,
+		_name:  name,
+		cache:  cb.re.cache,
+		leak:   leak,
+		volume: volume,
+		ttl:    ttl(leak, volume),
 	}, nil
 }
 
 // --- Freq Bucket ---
 
 type exprFreqBucket struct {
-	_name         string
-	_id           bucketID
-	cache         *cache.Cache
-	keyBufferPool *pool.BytePool
-	leak          int64
-	volume        int64
+	_name  string
+	cache  cache.Cache
+	leak   int64
+	volume int64
+	ttl    time.Duration
 }
 
 func (expr *exprFreqBucket) name() string {
 	return expr._name
 }
 
-func (expr *exprFreqBucket) id() bucketID {
-	return expr._id
-}
-
 func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
-	var buf countPayloadBuf
-	var bkt countPayload
-
-	keyBuffer := expr.keyBufferPool.Get()
-	defer expr.keyBufferPool.Put(keyBuffer)
-	keyBuffer = keyBuffer[:0]
-	keyClientAddr := request.Client.As16()
-	keyBuffer = expr._id.encodeTo(keyBuffer)
-	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
-
 	var timeDelta int64
-	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
+	keyClientAddr := request.Client.As16()
+	key := string(keyClientAddr[:])
+	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		bkt.decode(newBuf)
-		timeDelta = request.Time.Unix() - bkt.lastUpdate
+		timeDelta = request.Time.Unix() - bkt.LastUpdate
 	} else {
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time.Unix()
 		timeDelta = 0
-		newBuf = buf[:]
 	}
-	bkt.count++
+	bkt.Value++
 
 	if timeDelta > 0 {
-		bkt.count = uint32(max(0, int64(bkt.count)-expr.leak*timeDelta))
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.Value = max(0, bkt.Value-expr.leak*timeDelta)
+		bkt.LastUpdate = request.Time.Unix()
 	}
 
-	bkt.encode(newBuf)
-	expr.cache.Set(keyBuffer[:], newBuf)
+	expr.cache.Set(expr._name, key, bkt, expr.ttl)
 
-	if int64(bkt.count) > expr.volume {
+	if bkt.Value > expr.volume {
 		ctx.kv[ctxKeyBanReason] = banReasonFreqOverflow
 		ctx.kv[ctxKeyBanThreshold] = uint64(expr.volume)
-		ctx.kv[ctxKeyBanValue] = uint64(bkt.count)
+		ctx.kv[ctxKeyBanValue] = uint64(bkt.Value)
 		return true
 	}
 	return false
 }
 
 func (cb *chainBuilder) buildExprFreqBucket(value any) (exprBucket, error) {
-	str, ok := value.(string)
-	if !ok {
-		return nil, fmt.Errorf("FREQ-BUCKET expression expects a string, got %T", value)
-	}
-
-	args := strings.Split(str, ",")
-	if len(args) != 2 {
-		return nil, fmt.Errorf("FREQ-BUCKET expression expects 2 arguments, got %d", len(args))
-	}
-
-	leak, err := strconv.ParseInt(args[0], 10, 64)
+	m, err := assertRootMap(value)
 	if err != nil {
-		return nil, fmt.Errorf("FREQ-BUCKET expects integer leak, got %s", args[0])
+		return nil, fmt.Errorf("FREQ-BUCKET: %w", err)
 	}
 
+	name, err := assertString(m, "name")
+	if err != nil {
+		return nil, fmt.Errorf("FREQ-BUCKET: %w", err)
+	}
+
+	if _, exists := cb.bucketMap[name]; exists {
+		return nil, fmt.Errorf("FREQ-BUCKET: duplicate bucket name %q", name)
+	}
+
+	leak, err := assertInt64(m, "leak")
+	if err != nil {
+		return nil, fmt.Errorf("FREQ-BUCKET: %w", err)
+	}
 	if leak < 0 {
 		return nil, fmt.Errorf("FREQ-BUCKET expects non-negative leak, got %d", leak)
 	}
 
-	volume, err := strconv.ParseInt(args[1], 10, 64)
+	volume, err := assertInt64(m, "volume")
 	if err != nil {
-		return nil, fmt.Errorf("FREQ-BUCKET expects integer volume, got %s", args[1])
+		return nil, fmt.Errorf("FREQ-BUCKET: %w", err)
 	}
-
 	if volume < 0 {
 		return nil, fmt.Errorf("FREQ-BUCKET expects non-negative volume, got %d", volume)
 	}
 
-	id := cb.nextBucketID()
-
 	return &exprFreqBucket{
-		_name:         strconv.FormatUint(uint64(id), 10) + "-freq",
-		_id:           id,
-		cache:         cb.re.cache,
-		keyBufferPool: cb.re.keyBufferPool,
-		leak:          leak,
-		volume:        volume,
+		_name:  name,
+		cache:  cb.re.cache,
+		leak:   leak,
+		volume: volume,
+		ttl:    ttl(leak, volume),
 	}, nil
 }
 
@@ -307,181 +254,334 @@ func (m stepVolume) name() string {
 }
 
 type exprFileRatioBucket struct {
-	_name         string
-	_id           bucketID
-	cache         *cache.Cache
-	keyBufferPool *pool.BytePool
-	volume        volumeMethod
-	index         FileSizeIndex
-	leak          float64
+	_name  string
+	cache  cache.Cache
+	volume volumeMethod
+	index  FileSizeIndex
+	leak   float64
 }
 
 func (expr *exprFileRatioBucket) name() string {
 	return expr._name
 }
 
-func (expr *exprFileRatioBucket) id() bucketID {
-	return expr._id
-}
-
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {
 	// Query file size index
-	size, ok := expr.index.GetSize(unsafe.Slice(unsafe.StringData(request.URL), len(request.URL)))
+	size, ok := expr.index.GetSize([]byte(request.URL))
 	if !ok || size == 0 {
 		return false // No size info, impossible to track
 	}
 	fsize := float64(size)
 
-	var buf bytePayloadBuf
-	var bkt bytePayload
-
-	keyBuffer := expr.keyBufferPool.Get()
-	defer expr.keyBufferPool.Put(keyBuffer)
-	keyBuffer = keyBuffer[:0]
-
-	keyClientAddr := request.Client.As16()
-	keyBuffer = expr._id.encodeTo(keyBuffer)
-	keyBuffer = append(keyBuffer, keyClientAddr[:]...)
-	keyBuffer = append(keyBuffer, request.URL...)
-
 	var timeDelta int64
-	newBuf, ok := expr.cache.HasGet(buf[:], keyBuffer)
+	keyClientAddr := request.Client.As16()
+	key := string(keyClientAddr[:]) + request.URL
+	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		bkt.decode(newBuf)
-		timeDelta = request.Time.Unix() - bkt.lastUpdate
+		timeDelta = request.Time.Unix() - bkt.LastUpdate
 	} else {
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time.Unix()
 		timeDelta = 0
-		newBuf = buf[:]
 	}
-	bkt.value += request.Sent
+	bkt.Value += request.Sent
 
 	if timeDelta > 0 {
 		if expr.leak != 0 {
-			bkt.value = max(0, bkt.value-max(1, int64(expr.leak*float64(size*timeDelta)))) // At least leak 1 byte if expr.leak is not zero
+			leakBytes := int64(expr.leak * float64(size) * float64(timeDelta))
+			bkt.Value = max(0, bkt.Value-max(1, leakBytes)) // At least leak 1 byte if expr.leak is not zero
 		}
-		bkt.lastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time.Unix()
 	}
 
-	bkt.encode(newBuf)
-	expr.cache.Set(keyBuffer[:], newBuf)
+	volume := expr.volume.volume(fsize)
+	ttl := ttlFloat(expr.leak, volume)
+	expr.cache.Set(expr._name, key, bkt, ttl)
 
-	if bkt.value > int64(expr.volume.volume(fsize)*fsize) {
+	threshold := volume * fsize
+	// Overflow guard
+	if threshold > math.MaxInt64 {
+		return false
+	}
+
+	if bkt.Value > int64(threshold) {
 		ctx.kv[ctxKeyBanReason] = banReasonFileRatioOverflow
-		ctx.kv[ctxKeyBanThreshold] = math.Float64bits(expr.volume.volume(fsize))
-		ctx.kv[ctxKeyBanValue] = math.Float64bits(float64(bkt.value) / fsize)
+		ctx.kv[ctxKeyBanThreshold] = math.Float64bits(volume)
+		ctx.kv[ctxKeyBanValue] = math.Float64bits(float64(bkt.Value) / fsize)
 		return true
 	}
 	return false
 }
 
 func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) {
-	str, ok := value.(string)
-	if !ok {
-		return nil, fmt.Errorf("FILE-RATIO-BUCKET expression expects a string, got %T", value)
-	}
-
-	args := strings.Split(str, ",")
-	if len(args) < 2 {
-		return nil, fmt.Errorf("FILE-RATIO-BUCKET expression expects at least 2 arguments, got %d", len(args))
-	}
-
-	leak, err := strconv.ParseFloat(args[0], 64)
+	m, err := assertRootMap(value)
 	if err != nil {
-		return nil, fmt.Errorf("FILE-RATIO-BUCKET expects float leak, got %s", args[0])
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: %w", err)
 	}
 
-	args = args[1:]
+	name, err := assertString(m, "name")
+	if err != nil {
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: %w", err)
+	}
+
+	if _, exists := cb.bucketMap[name]; exists {
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: duplicate bucket name %q", name)
+	}
+
+	leak, err := assertFloat64(m, "leak")
+	if err != nil {
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: %w", err)
+	}
+
+	volMap, err := assertStringMap(m, "volume")
+	if err != nil {
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: %w", err)
+	}
+
+	volMethod, err := assertString(volMap, "method")
+	if err != nil {
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET volume: %w", err)
+	}
 
 	var volume volumeMethod
-	switch args[0] {
+	switch volMethod {
 	case "constant":
-		if len(args) != 2 {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"constant\" expects 1 arguments, got %d", len(args)-1)
+		v, err := assertFloat64(volMap, "volume")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume constant: %w", err)
 		}
-		vol := constantVolume{}
-
-		var err error
-		if vol._volume, err = strconv.ParseFloat(args[1], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"constant\" expects float volume, got %s", args[1])
+		volume = constantVolume{
+			_name:   fmt.Sprintf("constant,volume=%f", v),
+			_volume: v,
 		}
-		vol._name = fmt.Sprintf("constant,volume=%f", vol._volume)
-		volume = vol
 
 	case "clamped-linear":
-		if len(args) != 5 {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects 4 arguments, got %d", len(args)-1)
+		intercept, err := assertFloat64(volMap, "intercept")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume clamped-linear: %w", err)
 		}
-		vol := clampedLinearVolume{}
-
-		var err error
-		if vol.intercept, err = strconv.ParseFloat(args[1], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects float intercept, got %s", args[1])
+		slope, err := assertFloat64(volMap, "slope")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume clamped-linear: %w", err)
 		}
-		if vol.slope, err = strconv.ParseFloat(args[2], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects float slope, got %s", args[2])
+		minV, err := assertFloat64(volMap, "min")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume clamped-linear: %w", err)
 		}
-		if vol.min, err = strconv.ParseFloat(args[3], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects float min, got %s", args[3])
+		maxV, err := assertFloat64(volMap, "max")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume clamped-linear: %w", err)
 		}
-		if vol.max, err = strconv.ParseFloat(args[4], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects float max, got %s", args[4])
+		if maxV < minV {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume clamped-linear: max must be >= min")
 		}
-		if vol.max < vol.min {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"clamped-linear\" expects max >= min")
+		volume = clampedLinearVolume{
+			_name:     fmt.Sprintf("clamped-linear,intercept=%f,slope=%f,min=%f,max=%f", intercept, slope, minV, maxV),
+			intercept: intercept,
+			slope:     slope,
+			min:       minV,
+			max:       maxV,
 		}
-
-		vol._name = fmt.Sprintf("clamped-linear,intercept=%f,slope=%f,min=%f,max=%f", vol.intercept, vol.slope, vol.min, vol.max)
-		volume = vol
 
 	case "inverse-square":
-		if len(args) != 3 {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"inverse-square\" expects 2 arguments, got %d", len(args)-1)
+		base, err := assertFloat64(volMap, "base")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume inverse-square: %w", err)
 		}
-		vol := inverseSquareVolume{}
-
-		var err error
-		if vol.base, err = strconv.ParseFloat(args[1], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"inverse-square\" expects float base, got %s", args[1])
+		pivotRaw, ok := volMap["pivot"]
+		if !ok {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume inverse-square: missing field \"pivot\"")
 		}
-		if vol.pivotSquared, err = parseExprFloatByteSize(args[2]); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"inverse-square\" expects byte size pivot, got %s", args[2])
+		pivot, err := parseExprFloatByteSize(pivotRaw)
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume inverse-square: invalid pivot: %w", err)
 		}
-		vol._name = fmt.Sprintf("inverse-square,base=%f,pivot=%s", vol.base, units.HumanSize(vol.pivotSquared))
-		vol.pivotSquared = vol.pivotSquared * vol.pivotSquared
-		volume = vol
+		volume = inverseSquareVolume{
+			_name:        fmt.Sprintf("inverse-square,base=%f,pivot=%s", base, units.HumanSize(pivot)),
+			base:         base,
+			pivotSquared: pivot * pivot,
+		}
 
 	case "step":
-		if len(args) != 4 {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"step\" expects 3 arguments, got %d", len(args)-1)
+		thresholdRaw, ok := volMap["threshold"]
+		if !ok {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume step: missing field \"threshold\"")
 		}
-		vol := stepVolume{}
+		threshold, err := parseExprFloatByteSize(thresholdRaw)
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume step: invalid threshold: %w", err)
+		}
+		volumeLow, err := assertFloat64(volMap, "volume_low")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume step: %w", err)
+		}
+		volumeHigh, err := assertFloat64(volMap, "volume_high")
+		if err != nil {
+			return nil, fmt.Errorf("FILE-RATIO-BUCKET volume step: %w", err)
+		}
+		volume = stepVolume{
+			_name:      fmt.Sprintf("step,threshold=%s,volume_low=%f,volume_high=%f", units.HumanSize(threshold), volumeLow, volumeHigh),
+			threshold:  threshold,
+			volumeLow:  volumeLow,
+			volumeHigh: volumeHigh,
+		}
 
-		var err error
-		if vol.threshold, err = parseExprFloatByteSize(args[1]); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"step\" expects byte size threshold, got %s", args[1])
-		}
-		if vol.volumeLow, err = strconv.ParseFloat(args[2], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"step\" expects float volume_low, got %s", args[2])
-		}
-		if vol.volumeHigh, err = strconv.ParseFloat(args[3], 64); err != nil {
-			return nil, fmt.Errorf("FILE-RATIO-BUCKET: method \"step\" expects float volume_high, got %s", args[3])
-		}
-		vol._name = fmt.Sprintf("step,threshold=%s,volume_low=%f,volume_high=%f", units.HumanSize(vol.threshold), vol.volumeLow, vol.volumeHigh)
-		volume = vol
 	default:
-		return nil, fmt.Errorf("FILE-RATIO-BUCKET: unknown volume method \"%s\"", args[0])
+		return nil, fmt.Errorf("FILE-RATIO-BUCKET: unknown volume method %q", volMethod)
 	}
 
-	id := cb.nextBucketID()
-
 	return &exprFileRatioBucket{
-		_name:         strconv.FormatUint(uint64(id), 10) + "-file-ratio",
-		_id:           id,
-		cache:         cb.re.cache,
-		keyBufferPool: cb.re.keyBufferPool,
-		index:         cb.re.fileSizeIndex,
-		leak:          leak,
-		volume:        volume,
+		_name:  name,
+		cache:  cb.re.cache,
+		leak:   leak,
+		volume: volume,
+		index:  cb.re.fileSizeIndex,
 	}, nil
+}
+
+// Used when leak is zero
+const defaultTTL = time.Hour
+
+// Maximum number of seconds that can be represented as time.Duration
+const maxDurationSecs = int64(math.MaxInt64 / int64(time.Second))
+
+func ttl(leak, volume int64) time.Duration {
+	if leak <= 0 {
+		return defaultTTL
+	}
+	secs := volume / leak
+	// Avoids overflow
+	if secs > maxDurationSecs {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(secs) * time.Second
+}
+
+func ttlFloat(leak, volume float64) time.Duration {
+	if leak <= 0 {
+		return defaultTTL
+	}
+	secs := volume / leak
+	if secs > float64(maxDurationSecs) {
+		return time.Duration(math.MaxInt64)
+	}
+	return time.Duration(secs) * time.Second
+}
+
+// Assert helpers
+
+func assertString(m map[string]any, fieldName string) (string, error) {
+	fa, ok := m[fieldName]
+	if !ok {
+		return "", fmt.Errorf("missing field %q", fieldName)
+	}
+
+	f, ok := fa.(string)
+	if !ok {
+		return "", fmt.Errorf("expected string %s, got %T %v", fieldName, fa, fa)
+	}
+
+	return f, nil
+}
+
+func assertByteSize(m map[string]any, fieldName string) (int64, error) {
+	fa, ok := m[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("missing field %q", fieldName)
+	}
+
+	switch v := fa.(type) {
+	case int:
+		return int64(v), nil
+	case int64:
+		return v, nil
+	case uint64:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	case string:
+		n, err := units.FromHumanSize(v)
+		if err != nil {
+			n, err = strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return 0, fmt.Errorf("expected byte size %s, got %q", fieldName, v)
+			}
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("expected byte size %s, got %T %v", fieldName, fa, fa)
+	}
+}
+
+func assertInt64(m map[string]any, fieldName string) (int64, error) {
+	fa, ok := m[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("missing field %q", fieldName)
+	}
+
+	switch v := fa.(type) {
+	case int:
+		return int64(v), nil
+	case int64:
+		return v, nil
+	case uint64:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	case string:
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("expected integer %s, got %q", fieldName, v)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("expected integer %s, got %T %v", fieldName, fa, fa)
+	}
+}
+
+func assertFloat64(m map[string]any, fieldName string) (float64, error) {
+	fa, ok := m[fieldName]
+	if !ok {
+		return 0, fmt.Errorf("missing field %q", fieldName)
+	}
+
+	switch v := fa.(type) {
+	case int:
+		return float64(v), nil
+	case int64:
+		return float64(v), nil
+	case uint64:
+		return float64(v), nil
+	case float64:
+		return v, nil
+	case string:
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0, fmt.Errorf("expected float %s, got %q", fieldName, v)
+		}
+		return f, nil
+	default:
+		return 0, fmt.Errorf("expected float %s, got %T %v", fieldName, fa, fa)
+	}
+}
+
+func assertStringMap(m map[string]any, fieldName string) (map[string]any, error) {
+	fa, ok := m[fieldName]
+	if !ok {
+		return nil, fmt.Errorf("missing field %q", fieldName)
+	}
+
+	sm, ok := fa.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected map %s, got %T %v", fieldName, fa, fa)
+	}
+
+	return sm, nil
+}
+
+func assertRootMap(value any) (map[string]any, error) {
+	m, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected a map, got %T", value)
+	}
+	return m, nil
 }

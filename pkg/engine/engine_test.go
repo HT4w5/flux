@@ -879,7 +879,3 @@ func withTime(t time.Time) func(*dto.Request) {
 func withServer(ip netip.Addr) func(*dto.Request) {
 	return func(r *dto.Request) { r.Server = ip }
 }
-
-func withClient(ip netip.Addr) func(*dto.Request) {
-	return func(r *dto.Request) { r.Client = ip }
-}

@@ -129,8 +129,8 @@ func entryPoint() bool {
 	}
 
 	// Create RuleEngine
-	if cfg.RuleEngine.MaxCacheBytes < 0 {
-		cfg.RuleEngine.MaxCacheBytes = 1_000_000
+	if cfg.RuleEngine.MaxCacheSize < 0 {
+		cfg.RuleEngine.MaxCacheSize = 1_000_000
 	}
 
 	re := engine.New(
@@ -139,7 +139,7 @@ func entryPoint() bool {
 		engine.WithLogger(logger),
 		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
 		engine.WithBufferSize(cfg.RuleEngine.BufferSize),
-		engine.WithMaxCacheBytes(uint64(cfg.RuleEngine.MaxCacheBytes)),
+		engine.WithMaxCacheSize(cfg.RuleEngine.MaxCacheSize),
 	)
 
 	// Create log source

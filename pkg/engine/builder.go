@@ -17,14 +17,8 @@ type RuleConfig struct {
 }
 
 type chainBuilder struct {
-	re            *RuleEngine
-	bucketMap     map[bucketID]exprBucket
-	bucketCounter int
-}
-
-func (cb *chainBuilder) nextBucketID() bucketID {
-	cb.bucketCounter++
-	return bucketID(cb.bucketCounter)
+	re        *RuleEngine
+	bucketMap map[string]exprBucket
 }
 
 func (cb *chainBuilder) buildChains(ch []ChainConfig) (main chain, err error) {
@@ -199,21 +193,21 @@ func (cb *chainBuilder) buildExpression(expr any) (expression, error) {
 				if err != nil {
 					return nil, err
 				}
-				cb.bucketMap[bkt.id()] = bkt
+				cb.bucketMap[bkt.name()] = bkt
 				return bkt, nil
 			case "FREQ-BUCKET":
 				bkt, err := cb.buildExprFreqBucket(value)
 				if err != nil {
 					return nil, err
 				}
-				cb.bucketMap[bkt.id()] = bkt
+				cb.bucketMap[bkt.name()] = bkt
 				return bkt, nil
 			case "FILE-RATIO-BUCKET":
 				bkt, err := cb.buildExprFileRatioBucket(value)
 				if err != nil {
 					return nil, err
 				}
-				cb.bucketMap[bkt.id()] = bkt
+				cb.bucketMap[bkt.name()] = bkt
 				return bkt, nil
 
 			default:

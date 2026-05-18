@@ -3,7 +3,10 @@
 - name: bucket-byte
   rules:
   - expressions:
-    - BYTE-BUCKET: "0,1024"
+    - BYTE-BUCKET:
+        name: byte-test
+        leak: 0
+        volume: 1024
     statement:
       BAN: 15m
 
@@ -11,7 +14,10 @@
 - name: bucket-freq
   rules:
   - expressions:
-    - FREQ-BUCKET: "0,2"
+    - FREQ-BUCKET:
+        name: freq-test
+        leak: 0
+        volume: 2
     statement:
       BAN: 15m
 
@@ -19,7 +25,12 @@
 - name: bucket-file-ratio
   rules:
   - expressions:
-    - FILE-RATIO-BUCKET: "0,constant,0.5"
+    - FILE-RATIO-BUCKET:
+        name: file-ratio-test
+        leak: 0
+        volume:
+          method: constant
+          volume: 0.5
     statement:
       BAN: 15m
 
@@ -27,7 +38,10 @@
 - name: bucket-byte-leak
   rules:
   - expressions:
-    - BYTE-BUCKET: "512,2048" # 512 B/s, 2048 B threshold
+    - BYTE-BUCKET:
+        name: byte-leak-test
+        leak: 512
+        volume: 2048
     statement:
       BAN: 15m
 
@@ -35,7 +49,10 @@
 - name: bucket-freq-leak
   rules:
   - expressions:
-    - FREQ-BUCKET: "1,4" # 1 r/s, 4 r threshold
+    - FREQ-BUCKET:
+        name: freq-leak-test
+        leak: 1
+        volume: 4
     statement:
       BAN: 15m
 
@@ -43,7 +60,12 @@
 - name: bucket-file-ratio-leak
   rules:
   - expressions:
-    - FILE-RATIO-BUCKET: "0.1,constant,5" # 0.1 files/s, 5 files threshold
+    - FILE-RATIO-BUCKET:
+        name: file-ratio-leak-test
+        leak: 0.1
+        volume:
+          method: constant
+          volume: 5
     statement:
       BAN: 15m
 
@@ -51,7 +73,15 @@
 - name: bucket-file-ratio-clamped-linear
   rules:
   - expressions:
-    - FILE-RATIO-BUCKET: "0.1,clamped-linear,10,-1,5,9"
+    - FILE-RATIO-BUCKET:
+        name: file-ratio-clamped-test
+        leak: 0.1
+        volume:
+          method: clamped-linear
+          intercept: 10
+          slope: -1
+          min: 5
+          max: 9
     statement:
       BAN: 15m
 
@@ -59,7 +89,13 @@
 - name: bucket-file-ratio-inverse-square
   rules:
   - expressions:
-    - FILE-RATIO-BUCKET: "0.1,inverse-square,5,100MB"
+    - FILE-RATIO-BUCKET:
+        name: file-ratio-invsqrt-test
+        leak: 0.1
+        volume:
+          method: inverse-square
+          base: 5
+          pivot: 100MB
     statement:
       BAN: 15m
 
@@ -67,6 +103,13 @@
 - name: bucket-file-ratio-step
   rules:
   - expressions:
-    - FILE-RATIO-BUCKET: "0.1,step,30MB,100,5"
+    - FILE-RATIO-BUCKET:
+        name: file-ratio-step-test
+        leak: 0.1
+        volume:
+          method: step
+          threshold: 30MB
+          volume_low: 100
+          volume_high: 5
     statement:
       BAN: 15m
