@@ -56,16 +56,16 @@ func (expr *exprByteBucket) match(ctx requestCtx, request *dto.Request) bool {
 	key := string(keyClientAddr[:])
 	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		timeDelta = request.Time.Unix() - bkt.LastUpdate
+		timeDelta = request.Time - bkt.LastUpdate
 	} else {
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 		timeDelta = 0
 	}
 	bkt.Value += request.Sent
 
 	if timeDelta > 0 {
 		bkt.Value = max(0, bkt.Value-expr.leak*timeDelta)
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 	}
 
 	expr.cache.Set(expr._name, key, bkt, expr.ttl)
@@ -155,16 +155,16 @@ func (expr *exprFreqBucket) match(ctx requestCtx, request *dto.Request) bool {
 	key := string(keyClientAddr[:])
 	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		timeDelta = request.Time.Unix() - bkt.LastUpdate
+		timeDelta = request.Time - bkt.LastUpdate
 	} else {
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 		timeDelta = 0
 	}
 	bkt.Value++
 
 	if timeDelta > 0 {
 		bkt.Value = max(0, bkt.Value-expr.leak*timeDelta)
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 	}
 
 	expr.cache.Set(expr._name, key, bkt, expr.ttl)
@@ -326,9 +326,9 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 	key := string(keyClientAddr[:]) + request.URL
 	bkt, ok := expr.cache.Get(expr._name, key)
 	if ok {
-		timeDelta = request.Time.Unix() - bkt.LastUpdate
+		timeDelta = request.Time - bkt.LastUpdate
 	} else {
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 		timeDelta = 0
 	}
 	bkt.Value += request.Sent
@@ -338,7 +338,7 @@ func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) boo
 			leakBytes := int64(expr.leak * float64(size) * float64(timeDelta))
 			bkt.Value = max(0, bkt.Value-max(1, leakBytes)) // At least leak 1 byte if expr.leak is not zero
 		}
-		bkt.LastUpdate = request.Time.Unix()
+		bkt.LastUpdate = request.Time
 	}
 
 	volume := expr.volume.volume(fsize)

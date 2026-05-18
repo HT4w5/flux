@@ -121,7 +121,7 @@ func renameMainTo(chains []ChainConfig, from string) []ChainConfig {
 // overridden via the opts functional-argument list.
 func newRequest(ip netip.Addr, opts ...func(*dto.Request)) dto.Request {
 	r := dto.Request{
-		Time:     time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC),
+		Time:     time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC).Unix(),
 		Client:   ip,
 		Server:   netip.MustParseAddr("192.168.1.1"),
 		Method:   "GET",
@@ -345,10 +345,10 @@ func TestExpressionMatching(t *testing.T) {
 		{"expr-server-ip-cidr", newRequest(addr10, withServer(netip.MustParseAddr("10.0.0.1"))), 0, "SERVER-IP-CIDR: 10.0.0.1 not in 172.16.0.0/12"},
 
 		// BEFORE / AFTER
-		{"expr-before", newRequest(addr10, withTime(baseTime.Add(-1*time.Hour))), 1, "BEFORE: time before 2025-01-01"},
-		{"expr-before", newRequest(addr10, withTime(baseTime)), 0, "BEFORE: time after 2025-01-01"},
-		{"expr-after", newRequest(addr10, withTime(baseTime)), 0, "AFTER: time after 2025-01-01"},
-		{"expr-after", newRequest(addr10, withTime(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))), 0, "AFTER: time before 2025-01-01"},
+		{"expr-before", newRequest(addr10, withTime(baseTime.Add(-1*time.Hour).Unix())), 1, "BEFORE: time before 2025-01-01"},
+		{"expr-before", newRequest(addr10, withTime(baseTime.Unix())), 0, "BEFORE: time after 2025-01-01"},
+		{"expr-after", newRequest(addr10, withTime(baseTime.Unix())), 0, "AFTER: time after 2025-01-01"},
+		{"expr-after", newRequest(addr10, withTime(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).Unix())), 0, "AFTER: time before 2025-01-01"},
 	}
 
 	for _, tt := range tests {
@@ -525,7 +525,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withSent(500), withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			req := newRequest(addr1, withSent(500), withTime(baseTime.Add(time.Duration(i)*time.Second).Unix()))
 			re.SendChan() <- req
 			if got := jail.banCount(); got != 0 {
 				t.Errorf("expected 0 ban, got %d", got)
@@ -549,7 +549,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withSent(512+30), withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			req := newRequest(addr1, withSent(512+30), withTime(baseTime.Add(time.Duration(i)*time.Second).Unix()))
 			re.SendChan() <- req
 			if got := jail.banCount(); got >= 1 {
 				return
@@ -575,7 +575,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i*2)*time.Second)))
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i*2)*time.Second).Unix()))
 			re.SendChan() <- req
 			if got := jail.banCount(); got >= 1 {
 				t.Errorf("shouldn't be banned")
@@ -599,7 +599,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)))
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second).Unix()))
 			re.SendChan() <- req
 			re.SendChan() <- req
 			if got := jail.banCount(); got >= 1 {
@@ -626,7 +626,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)), withSent(50), withURL("/file1.zip"))
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second).Unix()), withSent(50), withURL("/file1.zip"))
 			re.SendChan() <- req
 			if got := jail.banCount(); got >= 1 {
 				t.Errorf("shouldn't be banned")
@@ -650,7 +650,7 @@ func TestBucketBehavior(t *testing.T) {
 		defer re.Shutdown()
 
 		for i := range 10000 {
-			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second)), withSent(1000), withURL("/file1.zip"))
+			req := newRequest(addr1, withTime(baseTime.Add(time.Duration(i)*time.Second).Unix()), withSent(1000), withURL("/file1.zip"))
 			re.SendChan() <- req
 			re.SendChan() <- req
 			if got := jail.banCount(); got >= 1 {
@@ -890,7 +890,7 @@ func withDuration(d time.Duration) func(*dto.Request) {
 	return func(r *dto.Request) { r.Duration = d }
 }
 
-func withTime(t time.Time) func(*dto.Request) {
+func withTime(t int64) func(*dto.Request) {
 	return func(r *dto.Request) { r.Time = t }
 }
 

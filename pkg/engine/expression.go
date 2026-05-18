@@ -90,11 +90,11 @@ func (cb *chainBuilder) buildExprNot(value any) (expression, error) {
 // Time expressions
 
 type exprBefore struct {
-	time time.Time
+	unixSec int64
 }
 
 func (bf *exprBefore) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.Before(bf.time)
+	return request.Time < bf.unixSec
 }
 
 func buildExprBefore(value any) (expression, error) {
@@ -108,15 +108,15 @@ func buildExprBefore(value any) (expression, error) {
 		return nil, fmt.Errorf("parsing time for BEFORE expression: %w", err)
 	}
 
-	return &exprBefore{time: t}, nil
+	return &exprBefore{unixSec: t.Unix()}, nil
 }
 
 type exprAfter struct {
-	time time.Time
+	unixSec int64
 }
 
 func (af *exprAfter) match(ctx requestCtx, request *dto.Request) bool {
-	return request.Time.After(af.time)
+	return request.Time > af.unixSec
 }
 
 func buildExprAfter(value any) (expression, error) {
@@ -130,7 +130,7 @@ func buildExprAfter(value any) (expression, error) {
 		return nil, fmt.Errorf("parsing time for AFTER expression: %w", err)
 	}
 
-	return &exprAfter{time: t}, nil
+	return &exprAfter{unixSec: t.Unix()}, nil
 }
 
 // IP address expressions

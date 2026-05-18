@@ -10,7 +10,7 @@ import (
 
 // Request entry
 type Request struct {
-	Time     time.Time
+	Time     int64
 	Client   netip.Addr
 	Server   netip.Addr
 	Method   string
@@ -24,7 +24,7 @@ type Request struct {
 
 func (r *Request) String() string {
 	return "Request{" +
-		"time: " + r.Time.Format(time.RFC3339) +
+		"time: " + time.Unix(r.Time, 0).Format(time.RFC3339) +
 		", client: " + r.Client.String() +
 		", server: " + r.Server.String() +
 		", method: " + r.Method +

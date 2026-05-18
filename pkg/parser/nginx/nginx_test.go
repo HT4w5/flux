@@ -208,9 +208,9 @@ func verifyParsedRequest(t *testing.T, testNum int, jsonLine string, req dto.Req
 		return
 	}
 
-	// Compare time (allow small tolerance for floating point)
-	if !req.Time.Equal(expectedTime) {
-		t.Errorf("test %d: time mismatch: got %v, expected %v", testNum, req.Time, expectedTime)
+	// Compare time
+	if req.Time != expectedTime {
+		t.Errorf("test %d: time mismatch: got %d, expected %d", testNum, req.Time, expectedTime)
 	}
 
 	// Compare client IP

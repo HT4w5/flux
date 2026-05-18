@@ -150,30 +150,12 @@ func parseNginxDuration(b []byte) (time.Duration, error) {
 	return time.Duration(sec*nsPerS + nsec), nil
 }
 
-func parseNginxTime(b []byte) (time.Time, error) {
+func parseNginxTime(b []byte) (int64, error) {
 	dotIdx := bytes.IndexByte(b, '.')
 	if dotIdx < 0 {
-		sec, err := strconv.ParseInt(unsafe.String(&b[0], len(b)), 10, 64)
-		return time.Unix(sec, 0), err
+		return strconv.ParseInt(unsafe.String(&b[0], len(b)), 10, 64)
 	}
-
-	// Parse seconds (Unix Epoch)
-	sec, err := strconv.ParseInt(unsafe.String(&b[0], dotIdx), 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	// Parse milliseconds/microseconds
-	fracBytes := b[dotIdx+1:]
-	frac, err := strconv.ParseInt(unsafe.String(&fracBytes[0], len(fracBytes)), 10, 64)
-	if err != nil {
-		return time.Time{}, err
-	}
-
-	// Convert fraction to nanoseconds
-	nsec := (frac * nsPerS) / pow10[len(fracBytes)]
-
-	return time.Unix(sec, nsec), nil
+	return strconv.ParseInt(unsafe.String(&b[0], dotIdx), 10, 64)
 }
 
 func dequote(b []byte) []byte {
