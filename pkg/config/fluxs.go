@@ -55,11 +55,20 @@ type SQLite3JailConfig struct {
 	PruneInterval time.Duration `mapstructure:"prune_interval"`
 }
 
+type CacheConfig struct {
+	Driver string       `mapstructure:"driver"`
+	CCache CCacheConfig `mapstructure:"ccache"`
+}
+
+type CCacheConfig struct {
+	MaxEntries int64 `mapstructure:"max_entries"`
+}
+
 type RuleEngineConfig struct {
-	Chains       []engine.ChainConfig `mapstructure:"chains"`
-	MaxCacheSize int64                `mapstructure:"max_cache_size"`
-	NumWorkers   int                  `mapstructure:"num_workers"`
-	BufferSize   int                  `mapstructure:"buffer_size"`
+	Chains     []engine.ChainConfig `mapstructure:"chains"`
+	Cache      CacheConfig          `mapstructure:"cache"`
+	NumWorkers int                  `mapstructure:"num_workers"`
+	BufferSize int                  `mapstructure:"buffer_size"`
 }
 
 type WebConfig struct {
@@ -135,9 +144,14 @@ func DefaultServerConfig() *ServerConfig {
 			},
 		},
 		RuleEngine: RuleEngineConfig{
-			MaxCacheSize: 10_000,
-			NumWorkers:   8,
-			BufferSize:   1024,
+			Cache: CacheConfig{
+				Driver: "ccache",
+				CCache: CCacheConfig{
+					MaxEntries: 10_000,
+				},
+			},
+			NumWorkers: 8,
+			BufferSize: 1024,
 		},
 		Web: WebConfig{
 			ListenAddr: ":8080",

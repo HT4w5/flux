@@ -17,8 +17,8 @@ type CCacheCache struct {
 	misses atomic.Int64
 }
 
-func NewCCacheCache(maxSize int64) *CCacheCache {
-	cache := ccache.Layered(ccache.Configure[CacheEntry]().MaxSize(maxSize).GetsPerPromote(1))
+func NewCCacheCache(maxEntries int64) *CCacheCache {
+	cache := ccache.Layered(ccache.Configure[CacheEntry]().MaxSize(maxEntries).GetsPerPromote(1))
 	return &CCacheCache{
 		cache: cache,
 	}

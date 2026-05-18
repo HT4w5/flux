@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HT4w5/flux/pkg/cache"
 	"github.com/HT4w5/flux/pkg/dto"
 	"go.yaml.in/yaml/v3"
 )
@@ -167,6 +168,7 @@ func TestFlowControl(t *testing.T) {
 			re := New(
 				WithJail(jail),
 				WithFileSizeIndex(fsi),
+				WithCache(cache.NewCCacheCache(100)),
 				WithNumWorkers(1),
 			)
 
@@ -357,6 +359,7 @@ func TestExpressionMatching(t *testing.T) {
 			re := New(
 				WithJail(jail),
 				WithFileSizeIndex(fsi),
+				WithCache(cache.NewCCacheCache(100)),
 				WithNumWorkers(1),
 			)
 
@@ -397,6 +400,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-byte")
@@ -421,6 +425,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-freq")
@@ -457,6 +462,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-file-ratio")
@@ -509,6 +515,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-byte-leak")
@@ -532,6 +539,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-byte-leak")
@@ -557,6 +565,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-freq-leak")
@@ -580,6 +589,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-freq-leak")
@@ -606,6 +616,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-file-ratio-leak")
@@ -629,6 +640,7 @@ func TestBucketBehavior(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "bucket-file-ratio-leak")
@@ -665,6 +677,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "ban-30m")
@@ -692,6 +705,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "ban-2h")
@@ -719,6 +733,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
 		cfg := renameMainTo(chains, "ban-90m")
@@ -762,6 +777,7 @@ func TestBanAndLogStatements(t *testing.T) {
 				re := New(
 					WithJail(jail),
 					WithFileSizeIndex(fsi),
+					WithCache(cache.NewCCacheCache(100)),
 					WithLogger(logger),
 					WithNumWorkers(1),
 				)
@@ -791,6 +807,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithLogger(logger),
 			WithNumWorkers(1),
 		)
@@ -821,6 +838,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		re := New(
 			WithJail(jail),
 			WithFileSizeIndex(fsi),
+			WithCache(cache.NewCCacheCache(100)),
 			WithLogger(logger),
 			WithNumWorkers(1),
 		)

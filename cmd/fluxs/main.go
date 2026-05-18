@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HT4w5/flux/pkg/api"
+	"github.com/HT4w5/flux/pkg/cache"
 	"github.com/HT4w5/flux/pkg/config"
 	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/index"
@@ -129,8 +130,17 @@ func entryPoint() bool {
 	}
 
 	// Create RuleEngine
-	if cfg.RuleEngine.MaxCacheSize < 0 {
-		cfg.RuleEngine.MaxCacheSize = 1_000_000
+	if cfg.RuleEngine.Cache.CCache.MaxEntries < 0 {
+		cfg.RuleEngine.Cache.CCache.MaxEntries = 1_000_000
+	}
+
+	var engineCache cache.Cache
+	switch cfg.RuleEngine.Cache.Driver {
+	case "ccache":
+		engineCache = cache.NewCCacheCache(cfg.RuleEngine.Cache.CCache.MaxEntries)
+	default:
+		logger.Error("unknown cache driver", "driver", cfg.RuleEngine.Cache.Driver)
+		return false
 	}
 
 	re := engine.New(
@@ -139,7 +149,7 @@ func entryPoint() bool {
 		engine.WithLogger(logger),
 		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
 		engine.WithBufferSize(cfg.RuleEngine.BufferSize),
-		engine.WithMaxCacheSize(cfg.RuleEngine.MaxCacheSize),
+		engine.WithCache(engineCache),
 	)
 
 	// Create log source

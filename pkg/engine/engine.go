@@ -48,8 +48,6 @@ type RuleEngine struct {
 		sync.WaitGroup
 		num int
 	}
-
-	maxCacheSize int64
 }
 
 type Option func(*RuleEngine)
@@ -98,10 +96,14 @@ func WithNumWorkers(num int) Option {
 	}
 }
 
-// WithMaxCacheSize sets the max cache size in bytes.
-func WithMaxCacheSize(maxCacheSize int64) Option {
+// WithCache sets the Cache for the RuleEngine.
+// Must not be nil.
+func WithCache(c cache.Cache) Option {
 	return func(re *RuleEngine) {
-		re.maxCacheSize = maxCacheSize
+		if c == nil {
+			panic("engine: WithCache requires a non-nil cache")
+		}
+		re.cache = c
 	}
 }
 
@@ -120,7 +122,6 @@ func New(opts ...Option) *RuleEngine {
 	re := &RuleEngine{
 		logger:         slog.New(slog.DiscardHandler),
 		ctxKVPool:      pool.NewMapPool[int, uint64](32),
-		maxCacheSize:   10_000,
 		requestBufSize: 1024,
 		workers: struct {
 			stop context.CancelFunc
@@ -136,7 +137,6 @@ func New(opts ...Option) *RuleEngine {
 	}
 
 	re.requestChan = make(chan dto.Request, re.requestBufSize)
-	re.cache = cache.NewCCacheCache(re.maxCacheSize) // TODO: add cache implementation selection
 
 	return re
 }
@@ -148,9 +148,9 @@ func (re *RuleEngine) Start(chains []ChainConfig) error {
 		return errors.New("engine: already started or shut down")
 	}
 
-	if re.jail == nil || re.fileSizeIndex == nil {
+	if re.jail == nil || re.fileSizeIndex == nil || re.cache == nil {
 		re.state.Store(engineNotStarted)
-		return errors.New("engine: required fields not set (jail, request channel, file size index)")
+		return errors.New("engine: required fields not set (jail, cache, file size index)")
 	}
 
 	// Build chains
