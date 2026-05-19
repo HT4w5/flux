@@ -74,9 +74,10 @@ func (trie PrefixTrie[T]) PrecisePrefixMatch(s string) (value T, ok bool) {
 	return trie.values[idx-1], true
 }
 
-func (trie PrefixTrie[T]) LongestPrefixMatch(s string) (value T, ok bool) {
+func (trie PrefixTrie[T]) longestPrefixMatch(s string) (value T, length int, ok bool) {
 	cur := 0
 	bestValueIdx := 0
+	bestLen := 0
 	if trie.nodes[0].valueIdx != 0 {
 		bestValueIdx = trie.nodes[0].valueIdx
 	}
@@ -88,12 +89,22 @@ func (trie PrefixTrie[T]) LongestPrefixMatch(s string) (value T, ok bool) {
 		cur = next
 		if idx := trie.nodes[cur].valueIdx; idx != 0 {
 			bestValueIdx = idx
+			bestLen = i + 1
 		}
 	}
 	if bestValueIdx == 0 {
 		return
 	}
-	return trie.values[bestValueIdx-1], true
+	return trie.values[bestValueIdx-1], bestLen, true
+}
+
+func (trie PrefixTrie[T]) LongestPrefixMatch(s string) (value T, ok bool) {
+	v, _, ok := trie.longestPrefixMatch(s)
+	return v, ok
+}
+
+func (trie PrefixTrie[T]) LongestPrefixMatchWithLen(s string) (value T, length int, ok bool) {
+	return trie.longestPrefixMatch(s)
 }
 
 // --- SuffixTrie ---
@@ -163,12 +174,13 @@ func (trie SuffixTrie[T]) PreciseSuffixMatch(s string) (value T, ok bool) {
 	return trie.values[idx-1], true
 }
 
-func (trie SuffixTrie[T]) LongestSuffixMatch(s string) (value T, ok bool) {
+func (trie SuffixTrie[T]) longestSuffixMatch(s string) (value T, length int, ok bool) {
 	if len(trie.nodes) == 0 {
 		return
 	}
 	cur := 0
 	bestValueIdx := 0
+	bestLen := 0
 	if trie.nodes[0].valueIdx != 0 {
 		bestValueIdx = trie.nodes[0].valueIdx
 	}
@@ -180,10 +192,20 @@ func (trie SuffixTrie[T]) LongestSuffixMatch(s string) (value T, ok bool) {
 		cur = next
 		if idx := trie.nodes[cur].valueIdx; idx != 0 {
 			bestValueIdx = idx
+			bestLen = len(s) - i
 		}
 	}
 	if bestValueIdx == 0 {
 		return
 	}
-	return trie.values[bestValueIdx-1], true
+	return trie.values[bestValueIdx-1], bestLen, true
+}
+
+func (trie SuffixTrie[T]) LongestSuffixMatch(s string) (value T, ok bool) {
+	v, _, ok := trie.longestSuffixMatch(s)
+	return v, ok
+}
+
+func (trie SuffixTrie[T]) LongestSuffixMatchWithLen(s string) (value T, length int, ok bool) {
+	return trie.longestSuffixMatch(s)
 }
