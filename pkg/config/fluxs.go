@@ -6,7 +6,6 @@ import (
 
 	"github.com/HT4w5/flux/pkg/engine"
 	"github.com/HT4w5/flux/pkg/meta"
-	"github.com/docker/go-units"
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
@@ -37,9 +36,16 @@ type SyslogSourceConfig struct {
 }
 
 type IndexConfig struct {
-	Routes   map[string]string `mapstructure:"routes"`
-	TTL      time.Duration     `mapstructure:"ttl"`
-	MaxBytes int64             `mapstructure:"max_bytes"`
+	Driver          string        `mapstructure:"driver"`
+	TTL             time.Duration `mapstructure:"ttl"`
+	MaxCacheEntries int64         `mapstructure:"max_cache_entries"`
+	// Driver configs
+	Local LocalConfig `mapstructure:"local"`
+}
+
+// Config for Index LocalDriver
+type LocalConfig struct {
+	Routes map[string]string `mapstructure:"routes"`
 }
 
 type JailConfig struct {
@@ -129,9 +135,12 @@ func DefaultServerConfig() *ServerConfig {
 			},
 		},
 		Index: IndexConfig{
-			TTL:      6 * time.Hour,
-			MaxBytes: 1 * units.GiB,
-			Routes:   make(map[string]string),
+			TTL:             6 * time.Hour,
+			MaxCacheEntries: 1024,
+			Driver:          "local",
+			Local: LocalConfig{
+				Routes: make(map[string]string),
+			},
 		},
 		Jail: JailConfig{
 			Method:              "sqlite3",

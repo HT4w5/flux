@@ -47,7 +47,7 @@ func (re *RuleEngine) GetBucketStatistics() (cache.Statistics, error) {
 var errNoSuchBucket = errors.New("no such bucket")
 var errBadBucketType = errors.New("bad bucket type")
 
-func (re *RuleEngine) GetBucketEntries(bucket string) (iter.Seq[any], error) {
+func (re *RuleEngine) BucketEntryIteratorOrErr(bucket string) (iter.Seq[any], error) {
 	if re.state.Load() != engineRunning {
 		return nil, errEngineNotRunning
 	}

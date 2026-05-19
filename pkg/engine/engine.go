@@ -25,18 +25,18 @@ type Jail interface {
 	Add(ctx context.Context, b *dto.BanRecord) error
 }
 
-type FileSizeIndex interface {
-	GetSize(path []byte) (int64, bool)
+type Index interface {
+	Query(ctx context.Context, url string) (int64, error)
 }
 
 type RuleEngine struct {
-	jail          Jail
-	cache         cache.Cache
-	fileSizeIndex FileSizeIndex
-	logger        *slog.Logger
-	ctxKVPool     *pool.MapPool[int, uint64]
-	main          chain
-	requestChan   chan dto.Request // engine-owned channel
+	jail        Jail
+	cache       cache.Cache
+	index       Index
+	logger      *slog.Logger
+	ctxKVPool   *pool.MapPool[int, uint64]
+	main        chain
+	requestChan chan dto.Request // engine-owned channel
 
 	bucketMap      map[string]exprBucket
 	requestBufSize int
@@ -63,14 +63,14 @@ func WithJail(j Jail) Option {
 	}
 }
 
-// WithFileSizeIndex sets the FileSizeIndex for the RuleEngine.
+// WithIndex sets the Index for the RuleEngine.
 // Must not be nil.
-func WithFileSizeIndex(fileSizeIndex FileSizeIndex) Option {
+func WithIndex(index Index) Option {
 	return func(re *RuleEngine) {
-		if fileSizeIndex == nil {
-			panic("engine: WithFileSizeIndex requires a non-nil FileSizeIndex")
+		if index == nil {
+			panic("engine: WithIndex requires a non-nil Index")
 		}
-		re.fileSizeIndex = fileSizeIndex
+		re.index = index
 	}
 }
 
@@ -148,7 +148,7 @@ func (re *RuleEngine) Start(chains []ChainConfig) error {
 		return errors.New("engine: already started or shut down")
 	}
 
-	if re.jail == nil || re.fileSizeIndex == nil || re.cache == nil {
+	if re.jail == nil || re.index == nil || re.cache == nil {
 		re.state.Store(engineNotStarted)
 		return errors.New("engine: required fields not set (jail, cache, file size index)")
 	}

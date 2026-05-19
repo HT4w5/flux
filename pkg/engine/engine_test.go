@@ -7,6 +7,7 @@ package engine
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -71,18 +72,21 @@ func (j *stubJail) lastBan() *dto.BanRecord {
 	return &cp
 }
 
-// stubFileSizeIndex implements FileSizeIndex.
-type stubFileSizeIndex struct {
+// stubIndex implements Index.
+type stubIndex struct {
 	sizes map[string]int64
 }
 
-func newStubFileSizeIndex(sizes map[string]int64) *stubFileSizeIndex {
-	return &stubFileSizeIndex{sizes: sizes}
+func newStubIndex(sizes map[string]int64) *stubIndex {
+	return &stubIndex{sizes: sizes}
 }
 
-func (s *stubFileSizeIndex) GetSize(path []byte) (int64, bool) {
-	sz, ok := s.sizes[string(path)]
-	return sz, ok
+func (s *stubIndex) Query(_ context.Context, url string) (int64, error) {
+	sz, ok := s.sizes[url]
+	if !ok {
+		return 0, errNotFound
+	}
+	return sz, nil
 }
 
 // --------------- helpers ---------------
@@ -117,6 +121,9 @@ func renameMainTo(chains []ChainConfig, from string) []ChainConfig {
 	return out
 }
 
+// errNotFound is a sentinel error returned by stubIndex when a URL is not found.
+var errNotFound = errors.New("not found")
+
 // newRequest builds a dto.Request with sensible defaults that can be
 // overridden via the opts functional-argument list.
 func newRequest(ip netip.Addr, opts ...func(*dto.Request)) dto.Request {
@@ -142,7 +149,7 @@ func newRequest(ip netip.Addr, opts ...func(*dto.Request)) dto.Request {
 
 func TestFlowControl(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex(map[string]int64{})
+	fsi := newStubIndex(map[string]int64{})
 
 	chains := readYAMLChains(t, "testdata/flow_control.yaml")
 
@@ -167,7 +174,7 @@ func TestFlowControl(t *testing.T) {
 			// channel is now engine-owned
 			re := New(
 				WithJail(jail),
-				WithFileSizeIndex(fsi),
+				WithIndex(fsi),
 				WithCache(cache.NewCCacheCache(100)),
 				WithNumWorkers(1),
 			)
@@ -203,7 +210,7 @@ func TestFlowControl(t *testing.T) {
 
 func TestExpressionMatching(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex(map[string]int64{})
+	fsi := newStubIndex(map[string]int64{})
 
 	chains := readYAMLChains(t, "testdata/expr_matching.yaml")
 
@@ -358,7 +365,7 @@ func TestExpressionMatching(t *testing.T) {
 			// channel is now engine-owned
 			re := New(
 				WithJail(jail),
-				WithFileSizeIndex(fsi),
+				WithIndex(fsi),
 				WithCache(cache.NewCCacheCache(100)),
 				WithNumWorkers(1),
 			)
@@ -383,7 +390,7 @@ func TestExpressionMatching(t *testing.T) {
 
 func TestBucketBehavior(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex(map[string]int64{
+	fsi := newStubIndex(map[string]int64{
 		"/file1.zip": 1000,
 	})
 	// Setup for file-ratio bucket
@@ -399,7 +406,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -424,7 +431,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -461,7 +468,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -514,7 +521,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -538,7 +545,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -564,7 +571,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -588,7 +595,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -615,7 +622,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -639,7 +646,7 @@ func TestBucketBehavior(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -666,7 +673,7 @@ func TestBucketBehavior(t *testing.T) {
 
 func TestBanAndLogStatements(t *testing.T) {
 	jail := newStubJail()
-	fsi := newStubFileSizeIndex(map[string]int64{})
+	fsi := newStubIndex(map[string]int64{})
 	addr1 := netip.MustParseAddr("10.0.0.1")
 
 	chains := readYAMLChains(t, "testdata/ban_log.yaml")
@@ -676,7 +683,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -704,7 +711,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -732,7 +739,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithNumWorkers(1),
 		)
@@ -776,7 +783,7 @@ func TestBanAndLogStatements(t *testing.T) {
 				// channel is now engine-owned
 				re := New(
 					WithJail(jail),
-					WithFileSizeIndex(fsi),
+					WithIndex(fsi),
 					WithCache(cache.NewCCacheCache(100)),
 					WithLogger(logger),
 					WithNumWorkers(1),
@@ -806,7 +813,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithLogger(logger),
 			WithNumWorkers(1),
@@ -837,7 +844,7 @@ func TestBanAndLogStatements(t *testing.T) {
 		// channel is now engine-owned
 		re := New(
 			WithJail(jail),
-			WithFileSizeIndex(fsi),
+			WithIndex(fsi),
 			WithCache(cache.NewCCacheCache(100)),
 			WithLogger(logger),
 			WithNumWorkers(1),

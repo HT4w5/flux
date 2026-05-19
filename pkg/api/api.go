@@ -21,7 +21,7 @@ type msgResp struct {
 
 type APIHandler struct {
 	re     *engine.RuleEngine
-	index  *index.FileSizeIndex
+	index  *index.Index
 	jail   jail.Jail
 	logger *slog.Logger
 }
@@ -52,6 +52,7 @@ func (s *APIHandler) RegisterRoutes(r *gin.Engine, g *gin.RouterGroup) {
 	v1.GET("/buckets/stats", s.handleGETBucketStats)
 	v1.GET("/index/stats", s.handleGETIndexStats)
 	v1.GET("/index/cache", s.handleGETIndexCache)
+	v1.GET("/index/query", s.handleGETIndexQuery)
 }
 
 // Ban info handlers
@@ -158,7 +159,7 @@ func (s *APIHandler) handleGETBuckets(c *gin.Context) {
 func (s *APIHandler) handleGETBucketEntries(c *gin.Context) {
 	bucket := c.Param("bucket")
 
-	it, err := s.re.GetBucketEntries(bucket)
+	it, err := s.re.BucketEntryIteratorOrErr(bucket)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, msgResp{
 			Msg:  err.Error(),
@@ -193,13 +194,68 @@ func (s *APIHandler) handleGETBucketEntries(c *gin.Context) {
 // Index handlers
 
 func (s *APIHandler) handleGETIndexStats(c *gin.Context) {
-	stats := s.index.GetStats()
+	stats := s.index.Statistics()
 	c.JSON(http.StatusOK, stats)
 }
 
 func (s *APIHandler) handleGETIndexCache(c *gin.Context) {
-	dump := s.index.DumpCache()
-	c.JSON(http.StatusOK, dump)
+	c.Header("Content-Type", "application/x-ndjson")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Content-Type-Options", "nosniff")
+
+	c.Status(http.StatusOK)
+
+	c.Stream(func(w io.Writer) bool {
+		encoder := json.NewEncoder(w)
+
+		for entry := range s.index.Iterator() {
+			if err := encoder.Encode(entry); err != nil {
+				return false
+			}
+
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}
+
+		return false
+	})
+}
+
+func (s *APIHandler) handleGETIndexQuery(c *gin.Context) {
+	path := c.Query("path")
+	size, err := s.index.Query(c.Request.Context(), path)
+	if err != nil {
+		switch err {
+		case index.ErrNotFound:
+			c.JSON(http.StatusNotFound, msgResp{
+				Msg:  err.Error(),
+				Code: http.StatusNotFound,
+			})
+			return
+		case index.ErrBadURL:
+			c.JSON(http.StatusBadRequest, msgResp{
+				Msg:  err.Error(),
+				Code: http.StatusBadRequest,
+			})
+			return
+		default:
+			c.JSON(http.StatusInternalServerError, msgResp{
+				Msg:  http.StatusText(http.StatusInternalServerError),
+				Code: http.StatusInternalServerError,
+			})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, struct {
+		Path string `json:"string"`
+		Size int64  `json:"size"`
+	}{
+		Path: path,
+		Size: size,
+	})
 }
 
 // Misc
@@ -225,7 +281,7 @@ func WithRuleEngine(re *engine.RuleEngine) func(*APIHandler) {
 	}
 }
 
-func WithIndex(i *index.FileSizeIndex) func(*APIHandler) {
+func WithIndex(i *index.Index) func(*APIHandler) {
 	return func(s *APIHandler) {
 		s.index = i
 	}

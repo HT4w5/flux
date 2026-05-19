@@ -291,7 +291,7 @@ type exprFileRatioBucket struct {
 	_name  string
 	cache  cache.Cache
 	volume volumeMethod
-	index  FileSizeIndex
+	index  Index
 	leak   float64
 }
 
@@ -315,8 +315,8 @@ func (expr *exprFileRatioBucket) config() any {
 
 func (expr *exprFileRatioBucket) match(ctx requestCtx, request *dto.Request) bool {
 	// Query file size index
-	size, ok := expr.index.GetSize([]byte(request.URL))
-	if !ok || size == 0 {
+	size, err := expr.index.Query(ctx.Context, request.URL)
+	if err != nil || size == 0 {
 		return false // No size info, impossible to track
 	}
 	fsize := float64(size)
@@ -482,7 +482,7 @@ func (cb *chainBuilder) buildExprFileRatioBucket(value any) (exprBucket, error) 
 		cache:  cb.re.cache,
 		leak:   leak,
 		volume: volume,
-		index:  cb.re.fileSizeIndex,
+		index:  cb.re.index,
 	}, nil
 }
 

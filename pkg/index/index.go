@@ -1,199 +1,143 @@
 package index
 
 import (
-	"bytes"
+	"context"
 	"errors"
+	"iter"
 	"log/slog"
-	"os"
-	"strings"
+	"strconv"
+	"sync/atomic"
 	"time"
-	"unsafe"
 
-	"github.com/HT4w5/cache"
-	"github.com/HT4w5/flux/pkg/pool"
 	"github.com/docker/go-units"
+	"github.com/karlseguin/ccache/v3"
 )
 
 const (
-	NonExistent   int64 = -1
-	NoRoute       int64 = -2
-	IsDir         int64 = -3
-	InternalError int64 = -4
+	notFound int64 = -1
 )
 
-type FileSizeIndex struct {
-	// External
-	logger *slog.Logger
+var (
+	ErrNotFound = errors.New("not found")
+	ErrBadURL   = errors.New("bad url")
+)
 
-	// Internal
-	cache          *cache.Cache
-	routeMap       map[string]string
-	pathBufferPool *pool.BytePool
-
-	// Config
-	ttl      time.Duration
-	maxBytes int64
+type Driver interface {
+	// Query should return (notFound, nil) when file size info is not available
+	// for caching.
+	Query(ctx context.Context, url string) (size int64, err error)
 }
 
-// WithTTL sets the time-to-live for cache entries.
-func WithTTL(ttl time.Duration) func(*FileSizeIndex) {
-	return func(i *FileSizeIndex) {
+// Index provides file size information for file ratio buckets
+type Index struct {
+	driver Driver
+	cache  *ccache.Cache[int64]
+	logger *slog.Logger
+
+	// Stats
+	queries atomic.Int64
+	misses  atomic.Int64
+
+	// Config
+	ttl             time.Duration
+	maxCacheEntries int64
+}
+
+type Option func(*Index)
+
+func New(opts ...Option) *Index {
+	idx := &Index{
+		logger:          slog.New(slog.DiscardHandler),
+		maxCacheEntries: 1024,
+		ttl:             6 * time.Hour,
+	}
+
+	for _, opt := range opts {
+		opt(idx)
+	}
+
+	idx.cache = ccache.New(ccache.Configure[int64]().MaxSize(idx.maxCacheEntries))
+
+	return idx
+}
+
+func WithMaxCacheEntries(maxCacheEntries int64) Option {
+	return func(i *Index) {
+		i.maxCacheEntries = maxCacheEntries
+	}
+}
+
+func WithDriver(driver Driver) Option {
+	return func(i *Index) {
+		i.driver = driver
+	}
+}
+
+func WithTTL(ttl time.Duration) Option {
+	return func(i *Index) {
 		i.ttl = ttl
 	}
 }
 
-// WithmaxBytes sets the maximum cache size in MB.
-func WithmaxBytes(size int64) func(*FileSizeIndex) {
-	return func(i *FileSizeIndex) {
-		i.maxBytes = size
-	}
-}
-
-// WithRoute adds a single route mapping for file paths.
-// E.g., "alpine" -> "/data/alpine".
-func WithRoute(tag, root string) func(*FileSizeIndex) {
-	root = strings.TrimSuffix(root, "/")
-	return func(i *FileSizeIndex) {
-		i.routeMap[tag] = root
-	}
-}
-
-func WithLogger(logger *slog.Logger) func(*FileSizeIndex) {
-	return func(i *FileSizeIndex) {
+func WithLogger(logger *slog.Logger) Option {
+	return func(i *Index) {
 		i.logger = logger
 	}
 }
 
-func New(opts ...func(*FileSizeIndex)) *FileSizeIndex {
-	i := &FileSizeIndex{
-		ttl:            6 * time.Hour,
-		maxBytes:       units.GB,
-		routeMap:       make(map[string]string),
-		pathBufferPool: pool.NewBytePool(128),
-		logger:         slog.New(slog.DiscardHandler),
-	}
-
-	for _, opt := range opts {
-		opt(i)
-	}
-
-	i.cache = cache.New(cache.WithSize(uint64(i.maxBytes)))
-
-	return i
-}
-
-func (i *FileSizeIndex) GetSize(path []byte) (int64, bool) {
-	if len(path) == 0 {
-		return NonExistent, false
-	}
-	var trimmed []byte
-	if path[0] == '/' {
-		trimmed = path[1:]
+func (idx *Index) Query(ctx context.Context, url string) (int64, error) {
+	idx.queries.Add(1)
+	if item, err := idx.cache.Fetch(url, idx.ttl, func() (int64, error) {
+		idx.misses.Add(1)
+		return idx.driver.Query(ctx, url)
+	}); err != nil {
+		return 0, err
 	} else {
-		trimmed = path
-	}
-
-	slashIdx := bytes.IndexByte(trimmed, '/')
-	if slashIdx < 0 {
-		return NoRoute, false
-	}
-
-	// Query cache first
-	if size, ok := i.queryCache(path); ok {
-		return size, size >= 0
-	}
-
-	first := unsafe.String(unsafe.SliceData(trimmed[:slashIdx]), slashIdx)
-
-	root, ok := i.routeMap[first]
-	if !ok {
-		return 0, false
-	}
-
-	buffer := i.pathBufferPool.Get()
-	defer i.pathBufferPool.Put(buffer)
-
-	buffer = buffer[:0]
-	buffer = append(buffer, root...)
-	buffer = append(buffer, trimmed[slashIdx:]...)
-
-	size := i.queryFilesystem(buffer)
-
-	// Update cache
-	if size != InternalError {
-		i.updateCache(path, size)
-	}
-
-	return size, size >= 0
-}
-
-func (i *FileSizeIndex) queryCache(path []byte) (int64, bool) {
-	var buf payloadBuf
-	i.cache.Get(buf[:], path)
-
-	var p cachePayload
-	p.read(buf[:])
-	if p.ExpiresAt.Before(time.Now()) {
-		return 0, false
-	}
-
-	return p.Size, true
-}
-
-func (i *FileSizeIndex) updateCache(path []byte, size int64) {
-	b := cachePayload{
-		Size:      size,
-		ExpiresAt: time.Now().Add(i.ttl),
-	}
-	var buf [16]byte
-	b.write(buf[:])
-	i.cache.Set(path, buf[:])
-}
-
-func (i *FileSizeIndex) queryFilesystem(path []byte) int64 {
-	pathStr := unsafe.String(unsafe.SliceData(path), len(path))
-	info, err := os.Stat(pathStr)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return NonExistent
+		v := item.Value()
+		if v == notFound {
+			return v, ErrNotFound
 		}
-		i.logger.Error("error reading file", "error", err, "path", path)
-		return InternalError
+		return v, nil
 	}
-
-	if info.IsDir() {
-		return IsDir
-	}
-
-	return info.Size()
 }
 
-func (i *FileSizeIndex) GetStats() cache.Statistics {
-	return i.cache.Statistics()
+type SizeEntry struct {
+	Path string `json:"path"`
+	Size string `json:"size"`
 }
 
-func (i *FileSizeIndex) DumpCache() []CacheDump {
-	d := make([]CacheDump, 0)
-
-	it := i.cache.Iterator()
-
-	kBuf := i.pathBufferPool.Get()
-	defer i.pathBufferPool.Put(kBuf)
-
-	for {
-		var vBuf payloadBuf
-		k, v, ok := it.GetNext(kBuf, vBuf[:])
-		if !ok {
-			break
-		}
-
-		var p cachePayload
-		p.read(v)
-		d = append(d, CacheDump{
-			Path:         string(k),
-			cachePayload: p,
+func (idx *Index) Iterator() iter.Seq[SizeEntry] {
+	return func(yield func(SizeEntry) bool) {
+		idx.cache.ForEachFunc(func(key string, item *ccache.Item[int64]) bool {
+			if item.Expired() {
+				return true
+			}
+			v := item.Value()
+			e := SizeEntry{
+				Path: key,
+			}
+			if v < 0 {
+				e.Size = strconv.FormatInt(v, 10)
+			} else {
+				e.Size = units.HumanSize(float64(v))
+			}
+			return yield(e)
 		})
 	}
+}
 
-	return d
+type Statistics struct {
+	Queries   int64 `json:"queries"`
+	Misses    int64 `json:"misses"`
+	Evictions int64 `json:"evictions"`
+	Size      int64 `json:"size"`
+}
+
+func (idx *Index) Statistics() Statistics {
+	return Statistics{
+		Queries:   idx.queries.Load(),
+		Misses:    idx.misses.Load(),
+		Evictions: int64(idx.cache.GetDropped()),
+		Size:      idx.cache.GetSize(),
+	}
 }

@@ -101,18 +101,24 @@ func entryPoint() bool {
 		return false
 	}
 
-	// Create file size index
-	fileSizeIndexOpts := []func(*index.FileSizeIndex){
-		index.WithTTL(cfg.Index.TTL),
-		index.WithmaxBytes(cfg.Index.MaxBytes),
+	// Create index
+	var indexDriver index.Driver
+	switch cfg.Index.Driver {
+	case "local":
+		indexDriver = index.NewLocalDriver(cfg.Index.Local.Routes)
+	default:
+		logger.Error("unknown index driver", "driver", cfg.Jail.Method)
+		return false
+	}
+
+	indexOpts := []index.Option{
+		index.WithDriver(indexDriver),
 		index.WithLogger(logger),
+		index.WithTTL(cfg.Index.TTL),
+		index.WithMaxCacheEntries(cfg.Index.MaxCacheEntries),
 	}
 
-	for tag, root := range cfg.Index.Routes {
-		fileSizeIndexOpts = append(fileSizeIndexOpts, index.WithRoute(tag, root))
-	}
-
-	fileSizeIndex := index.New(fileSizeIndexOpts...)
+	index := index.New(indexOpts...)
 
 	// Create jail
 	var jailInstance jail.Jail
@@ -144,7 +150,7 @@ func entryPoint() bool {
 	}
 
 	re := engine.New(
-		engine.WithFileSizeIndex(fileSizeIndex),
+		engine.WithIndex(index),
 		engine.WithJail(jailInstance),
 		engine.WithLogger(logger),
 		engine.WithNumWorkers(cfg.RuleEngine.NumWorkers),
@@ -187,7 +193,7 @@ func entryPoint() bool {
 
 	apiHandler := api.New(
 		api.WithRuleEngine(re),
-		api.WithIndex(fileSizeIndex),
+		api.WithIndex(index),
 		api.WithJail(jailInstance),
 		api.WithLogger(logger),
 	)
